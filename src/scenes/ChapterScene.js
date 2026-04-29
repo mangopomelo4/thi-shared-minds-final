@@ -7,55 +7,44 @@ const FONT_NARRATIVE = "'JetBrains Mono', monospace";
 const CHAPTER_CONFIGS = {
   1: {
     instruction: {
-      room: "> TOGGLE HARDWARE DIAGNOSTICS (ARROWS + SPACE)",
-      terminal: "> REFERENCE DIAGNOSTIC PROTOCOL"
+      room: "> HOLD [A] TO CHARGE NODE 1, [D] TO CHARGE NODE 2",
+      terminal: "> HOLD [Left] TO CHARGE NODE 3, [Right] TO CHARGE NODE 4"
     },
-    narrative: ["the core components are offline", "reboot the logic"],
-    initState: () => {
-      const components = ["MEM_0", "MEM_1", "CPU_A", "CPU_B", "NET_X", "NET_Y", "SYS_1", "SYS_2", "PWR_0"];
-      for (let i = components.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [components[i], components[j]] = [components[j], components[i]];
-      }
-      return {
-          grid: components,
-          active: [false, false, false, false, false, false, false, false, false],
-          cursorX: 1,
-          cursorY: 1,
-          rules: [
-            "> 1. EXACTLY ONE [CPU] MUST BE ACTIVE",
-            "> 2. AT LEAST ONE [MEM] MUST BE ACTIVE",
-            "> 3. BOTH [SYS] NODES MUST SHARE THE SAME STATE",
-            "> 4. THE CENTER NODE MUST ALWAYS BE ACTIVE",
-            "> 5. EXACTLY 4 NODES MUST BE ACTIVE"
-          ]
-      };
-    }
+    narrative: ["power levels are unstable", "synchronize the charge exactly"],
+    initState: () => ({
+      c1: 0, c2: 0, c3: 0, c4: 0,
+      r1: false, r2: false, t1: false, t2: false
+    })
   },
   2: {
     instruction: {
-      room: "> TYPE OVERRIDE COMMANDS",
-      terminal: "> REFERENCE DECRYPTION MANUAL"
+      room: "> HOLD [SPACE] TO SCAN. YOU CANNOT SORT.",
+      terminal: "> PRESS [1-5] TO SWAP ADJACENT. YOU CANNOT SCAN."
     },
-    narrative: ["the system is purging", "we must bypass the kernel"],
+    narrative: ["the sequence is scrambled", "i can see it, you can fix it"],
     initState: () => ({
-      phase: 0, timer: 15, typing: "",
-      errors: ["0x4F_BUFFER", "0xA1_PANIC", "0x22_NET"],
-      answers: ["sys.flush", "kernel.bypass", "net.reset"]
+      packets: ['E', 'B', 'F', 'A', 'D', 'C'],
+      scanning: false,
+      swaps: 0
     })
   },
   3: {
     instruction: {
-      room: "> NAVIGATE THE BLIND MAZE (W/A/S/D)",
-      terminal: "> GUIDE THEM TO THE EXIT"
+      room: "> MOVE CORE (W/S). YOU CANNOT SEE MINES.",
+      terminal: "> MOVE CORE (A/D). YOU CANNOT SEE TARGETS."
     },
-    narrative: ["you cannot see the path", "but they can see you"],
+    narrative: ["we are blind to the whole", "guide my hand"],
     initState: () => ({
-      x: 1, y: 1,
-      targetX: 8, targetY: 8,
-      walls: [
-        [2,1],[2,2],[2,3],[4,3],[4,4],[4,5],[4,6],[6,6],[6,7],[6,8],[8,7],[7,2],[8,2],[1,5],[2,5],[1,7],[2,7],[7,4],[8,4]
-      ]
+      x: 2, y: 2,
+      cores: [
+        {x: 0, y: 0, active: true}, {x: 4, y: 0, active: true},
+        {x: 0, y: 4, active: true}, {x: 4, y: 4, active: true}
+      ],
+      mines: [
+        {x: 1, y: 1}, {x: 3, y: 1}, {x: 1, y: 3}, {x: 3, y: 3},
+        {x: 2, y: 0}, {x: 2, y: 4}, {x: 0, y: 2}, {x: 4, y: 2}
+      ],
+      score: 0
     })
   },
   4: {
@@ -89,14 +78,17 @@ const CHAPTER_CONFIGS = {
   },
   6: {
     instruction: {
-      room: "> HOLD [SPACE] TO STABILIZE DATABANK",
-      terminal: "> EXTRACT CORE DATA WHEN STABLE"
+      room: "> REPLICATE SEQUENCE (A, D)",
+      terminal: "> REPLICATE SEQUENCE (Left, Right)"
     },
-    narrative: ["the core is shifting", "hold it still for me"],
+    narrative: ["the pattern is shifting", "memorize the flow together"],
     initState: () => ({
-      sliderX: 0, sweetSpotX: 100,
-      roomHolding: false, typing: "",
-      targetCode: "A4F9"
+      sequence: [0, 2, 1, 3, 0], // 0: room A, 1: room D, 2: term L, 3: term R
+      input: [],
+      showing: true,
+      showTimer: 0,
+      showIndex: 0,
+      round: 1
     })
   },
   7: {
@@ -227,14 +219,52 @@ export class ChapterScene {
       this.cyberDeco = Array(5).fill(0).map(() => `0x${Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0')}`);
     }
 
-    if (this.chapter === 2 && this.role === 'room' && !this.completed) {
-      this.state.timer -= dt;
-      if (this.state.timer <= 0) {
-        this.state.phase = 0;
-        this.state.timer = 15;
-        if (this.manager.audio) this.manager.audio.error();
+    if (this.chapter === 1 && !this.completed) {
+      if (this.role === 'room') {
+        const speed = [0.4, 0.6, 0.8, 1.0];
+        if (this.state.r1) this.state.c1 = Math.min(100, this.state.c1 + dt * 100 * speed[0]); else this.state.c1 = Math.max(0, this.state.c1 - dt * 100 * 0.5);
+        if (this.state.r2) this.state.c2 = Math.min(100, this.state.c2 + dt * 100 * speed[1]); else this.state.c2 = Math.max(0, this.state.c2 - dt * 100 * 0.5);
+        if (this.state.t1) this.state.c3 = Math.min(100, this.state.c3 + dt * 100 * speed[2]); else this.state.c3 = Math.max(0, this.state.c3 - dt * 100 * 0.5);
+        if (this.state.t2) this.state.c4 = Math.min(100, this.state.c4 + dt * 100 * speed[3]); else this.state.c4 = Math.max(0, this.state.c4 - dt * 100 * 0.5);
+
+        if (this.state.c1 === 100 && this.state.c2 === 100 && this.state.c3 === 100 && this.state.c4 === 100) {
+          this.complete();
+        }
+        this.sync();
       }
-      this.sync();
+    }
+
+    if (this.chapter === 2 && !this.completed) {
+      if (this.role === 'room') {
+        const sorted = ['A', 'B', 'C', 'D', 'E', 'F'];
+        let isSorted = true;
+        for(let i=0; i<6; i++) {
+          if(this.state.packets[i] !== sorted[i]) isSorted = false;
+        }
+        if (isSorted) this.complete();
+      }
+    }
+
+    if (this.chapter === 3 && !this.completed) {
+      if (this.role === 'room' && this.state.score >= 4) {
+        this.complete();
+      }
+    }
+
+    if (this.chapter === 6 && !this.completed) {
+      if (this.role === 'room' && this.state.showing) {
+        this.state.showTimer += dt;
+        if (this.state.showTimer > 0.8) {
+          this.state.showTimer = 0;
+          this.state.showIndex++;
+          if (this.state.showIndex >= this.state.round) {
+            this.state.showing = false;
+            this.state.showIndex = 0;
+          }
+          if (this.manager.audio) this.manager.audio.click();
+          this.sync();
+        }
+      }
     }
 
     if (this.chapter === 4 && !this.completed) {
@@ -416,133 +446,91 @@ export class ChapterScene {
     }
   }
 
-  checkChapter1Complete() {
-    if (this.completed) return;
-    const g = this.state.grid;
-    const a = this.state.active;
-
-    let activeCount = a.filter(x => x).length;
-    if (activeCount !== 4) return;
-
-    if (!a[4]) return;
-
-    let sys1 = a[g.indexOf('SYS_1')];
-    let sys2 = a[g.indexOf('SYS_2')];
-    if (sys1 !== sys2) return;
-
-    let cpuA = a[g.indexOf('CPU_A')];
-    let cpuB = a[g.indexOf('CPU_B')];
-    if ((cpuA && cpuB) || (!cpuA && !cpuB)) return;
-
-    let mem0 = a[g.indexOf('MEM_0')];
-    let mem1 = a[g.indexOf('MEM_1')];
-    if (!mem0 && !mem1) return;
-
-    this.complete();
-  }
-
   drawChapter1(ctx) {
-    if (this.role === 'terminal') {
-      ctx.font = `200 1.1rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#e8e8e8';
-      ctx.textAlign = 'left';
-      this.state.rules.forEach((rule, i) => {
-        ctx.fillText(rule, -250, (i - 2) * 45);
-      });
-      ctx.textAlign = 'center';
+    ctx.fillStyle = '#111';
+    ctx.fillRect(-200, -100, 400, 200);
 
-      ctx.globalAlpha = 0.2;
-      for (let y = 0; y < 3; y++) {
-        for (let x = 0; x < 3; x++) {
-          let idx = y * 3 + x;
-          if (this.state.active[idx]) {
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(-150 + x * 100, -100 + y * 100, 80, 40);
-          }
-        }
-      }
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.font = `300 1.2rem 'JetBrains Mono', monospace`;
-      for (let y = 0; y < 3; y++) {
-        for (let x = 0; x < 3; x++) {
-          let idx = y * 3 + x;
-          let px = -200 + x * 150;
-          let py = -120 + y * 100;
+    const draws = [
+      {c: this.state.c1, active: this.state.r1, label: 'C1'},
+      {c: this.state.c2, active: this.state.r2, label: 'C2'},
+      {c: this.state.c3, active: this.state.t1, label: 'C3'},
+      {c: this.state.c4, active: this.state.t2, label: 'C4'}
+    ];
 
-          ctx.fillStyle = this.state.active[idx] ? '#eee' : '#222';
-          ctx.fillRect(px, py, 120, 60);
+    draws.forEach((d, i) => {
+      const x = -150 + i * 100;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(x - 20, -50, 40, 100);
+      
+      ctx.fillStyle = d.c === 100 ? '#fff' : (d.active ? '#aaa' : '#666');
+      const h = (d.c / 100) * 100;
+      ctx.fillRect(x - 20, 50 - h, 40, h);
 
-          if (this.state.cursorX === x && this.state.cursorY === y) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(px - 5, py - 5, 130, 70);
-          }
-
-          ctx.fillStyle = this.state.active[idx] ? '#000' : '#888';
-          ctx.fillText(this.state.grid[idx], px + 60, py + 30);
-        }
-      }
-    }
+      ctx.fillStyle = '#eee';
+      ctx.font = `200 1rem 'JetBrains Mono', monospace`;
+      ctx.fillText(d.label, x, 80);
+    });
   }
 
   drawChapter2(ctx) {
-    if (this.role === 'terminal') {
-      ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#f55';
-      ctx.fillText(`ERROR: ${this.state.errors[this.state.phase]}`, 0, -100);
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = `200 1rem 'JetBrains Mono', monospace`;
-      this.state.errors.forEach((err, i) => {
-        ctx.fillText(`IF ${err} -> ${this.state.answers[i]}`, 0, 50 + i * 30);
-      });
-      
-      if (this.state.typing) {
-        ctx.globalAlpha = 0.5;
-        ctx.fillText(`> ${this.state.typing}_`, 0, -30);
-        ctx.globalAlpha = 1;
-      }
-    } else {
-      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+    if (this.role === 'terminal' && !this.state.scanning) {
+      ctx.font = `300 1.2rem 'JetBrains Mono', monospace`;
       ctx.fillStyle = '#fff';
-      const typed = this.state.typing + (Math.floor(this.time * 2) % 2 === 0 ? '_' : '');
-      ctx.fillText(`> ${typed}`, 0, 0);
-
-      ctx.fillStyle = '#666';
-      ctx.fillRect(-150, 100, 300, 5);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(-150, 100, 300 * (this.state.timer / 15), 5);
+      ctx.fillText(`AWAITING SCAN...`, 0, -100);
     }
+    
+    this.state.packets.forEach((p, i) => {
+      const x = -150 + i * 60;
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x - 25, -25, 50, 50);
+
+      if (this.state.scanning) {
+        ctx.fillStyle = '#fff';
+        ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
+        ctx.fillText(p, x, 0);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.fillText('#', x, 0);
+      }
+
+      ctx.fillStyle = '#888';
+      ctx.font = `200 0.8rem 'JetBrains Mono', monospace`;
+      ctx.fillText(`[${i+1}]`, x, 40);
+    });
   }
 
   drawChapter3(ctx) {
-    const cs = 40;
-    const ox = -200;
-    const oy = -200;
-    ctx.font = `200 1.2rem ${FONT_UI}`;
+    const cs = 60;
+    const ox = -150, oy = -150;
+    ctx.font = `200 1.5rem 'JetBrains Mono', monospace`;
 
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < 5; x++) {
         const px = ox + x * cs;
         const py = oy + y * cs;
 
-        let isWall = this.state.walls.some(w => w[0] === x && w[1] === y);
+        let isCore = this.state.cores.some(c => c.x === x && c.y === y && c.active);
+        let isMine = this.state.mines.some(m => m.x === x && m.y === y);
         let isPlayer = this.state.x === x && this.state.y === y;
-        let isTarget = this.state.targetX === x && this.state.targetY === y;
 
-        if (this.role === 'room') {
-          // Fog of war
-          if (Math.abs(this.state.x - x) <= 1 && Math.abs(this.state.y - y) <= 1) {
-            ctx.fillStyle = isPlayer ? '#fff' : isTarget ? '#888' : isWall ? '#333' : '#111';
-            ctx.fillText(isPlayer ? '@' : isTarget ? 'O' : isWall ? 'X' : '.', px, py);
-          }
-        } else {
-          ctx.fillStyle = isPlayer ? '#fff' : isTarget ? '#888' : isWall ? '#333' : '#111';
-          ctx.fillText(isPlayer ? '@' : isTarget ? 'O' : isWall ? 'X' : '.', px, py);
+        ctx.strokeStyle = '#222';
+        ctx.strokeRect(px, py, cs, cs);
+
+        if (isPlayer) {
+          ctx.fillStyle = '#fff';
+          ctx.fillText('@', px + cs/2, py + cs/2);
+        } else if (isCore && this.role === 'room') {
+          ctx.fillStyle = '#0f0';
+          ctx.fillText('O', px + cs/2, py + cs/2);
+        } else if (isMine && this.role === 'terminal') {
+          ctx.fillStyle = '#f00';
+          ctx.fillText('X', px + cs/2, py + cs/2);
         }
       }
     }
+    
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(`CORES: ${this.state.score} / 4`, 0, 200);
   }
 
   drawChapter4(ctx) {
@@ -631,30 +619,30 @@ export class ChapterScene {
   }
 
   drawChapter6(ctx) {
-    if (this.role === 'room') {
-      ctx.strokeStyle = '#444';
-      ctx.strokeRect(-200, -20, 400, 40);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(this.state.sweetSpotX - 40, -20, 80, 40);
-
-      ctx.fillStyle = this.state.roomHolding ? '#fff' : '#888';
-      ctx.fillRect(this.state.sliderX - 5, -25, 10, 50);
-    } else {
-      let isStable = this.state.roomHolding && Math.abs(this.state.sliderX - this.state.sweetSpotX) < 40;
+    if (this.state.showing) {
+      ctx.fillStyle = '#fff';
       ctx.font = `300 2rem 'JetBrains Mono', monospace`;
-      
-      if (isStable) {
-        ctx.fillStyle = '#fff';
-        ctx.fillText(this.state.targetCode, 0, -50);
-      } else {
-        ctx.fillStyle = '#444';
-        const scramble = Array(4).fill(0).map(() => String.fromCharCode(65 + Math.random() * 26)).join('');
-        ctx.fillText(scramble, 0, -50);
+      if (this.state.showIndex > 0) {
+        const val = this.state.sequence[this.state.showIndex - 1];
+        let sym = '';
+        if (val === 0) sym = '[ROOM: A]';
+        if (val === 1) sym = '[ROOM: D]';
+        if (val === 2) sym = '[TERM: Left]';
+        if (val === 3) sym = '[TERM: Right]';
+        ctx.fillText(sym, 0, 0);
       }
-
-      ctx.fillStyle = '#eee';
-      ctx.fillText(`> ${this.state.typing}_`, 0, 50);
+    } else {
+      ctx.fillStyle = '#888';
+      ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
+      ctx.fillText(`INPUT SEQUENCE (${this.state.input.length}/${this.state.round})`, 0, -50);
+      
+      const inStr = this.state.input.map(v => {
+        if (v===0) return 'A'; if (v===1) return 'D';
+        if (v===2) return 'L'; if (v===3) return 'R';
+      }).join(' ');
+      
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`> ${inStr}_`, 0, 50);
     }
   }
 
@@ -709,61 +697,65 @@ export class ChapterScene {
 
     let updated = false;
 
-    if (this.chapter === 1 && this.role === 'room') {
-      if (key === 'w' || key === 'ArrowUp') { this.state.cursorY = Math.max(0, this.state.cursorY - 1); updated = true; }
-      if (key === 's' || key === 'ArrowDown') { this.state.cursorY = Math.min(2, this.state.cursorY + 1); updated = true; }
-      if (key === 'a' || key === 'ArrowLeft') { this.state.cursorX = Math.max(0, this.state.cursorX - 1); updated = true; }
-      if (key === 'd' || key === 'ArrowRight') { this.state.cursorX = Math.min(2, this.state.cursorX + 1); updated = true; }
-      if (key === ' ' || key === 'Enter') {
-        let idx = this.state.cursorY * 3 + this.state.cursorX;
-        this.state.active[idx] = !this.state.active[idx];
-        if (this.manager.audio) this.manager.audio.click();
-        this.checkChapter1Complete();
-        updated = true;
+    if (this.chapter === 1) {
+      if (this.role === 'room') {
+        if (key === 'a' || key === 'ArrowLeft') { this.state.r1 = true; updated = true; }
+        if (key === 'd' || key === 'ArrowRight') { this.state.r2 = true; updated = true; }
+      } else {
+        if (key === 'ArrowLeft' || key === 'a') { this.state.t1 = true; updated = true; }
+        if (key === 'ArrowRight' || key === 'd') { this.state.t2 = true; updated = true; }
       }
     }
 
-    if (this.chapter === 2 && this.role === 'room') {
-      if (key === 'Backspace') {
-        this.state.typing = this.state.typing.slice(0, -1);
-        updated = true;
-      } else if (key === 'Enter') {
-        if (this.state.typing === this.state.answers[this.state.phase]) {
-          this.state.phase++;
-          this.state.typing = "";
-          this.state.timer = 15;
-          if (this.state.phase >= 3) this.complete();
-          if (this.manager.audio) this.manager.audio.select();
-        } else {
-          if (this.manager.audio) this.manager.audio.error();
-          this.state.typing = "";
-        }
-        updated = true;
-      } else if (key.length === 1) {
-        this.state.typing += key;
-        updated = true;
-        if (this.manager.audio) this.manager.audio.click();
-      }
-    }
-
-    if (this.chapter === 3 && this.role === 'room') {
-      let nx = this.state.x;
-      let ny = this.state.y;
-      if (key === 'w' || key === 'ArrowUp') ny--;
-      if (key === 's' || key === 'ArrowDown') ny++;
-      if (key === 'a' || key === 'ArrowLeft') nx--;
-      if (key === 'd' || key === 'ArrowRight') nx++;
-
-      if (nx !== this.state.x || ny !== this.state.y) {
-        if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10) {
-          let hitWall = this.state.walls.some(w => w[0] === nx && w[1] === ny);
-          if (!hitWall) {
-            this.state.x = nx;
-            this.state.y = ny;
+    if (this.chapter === 2) {
+      if (this.role === 'room') {
+        if (key === ' ' || key === 'Enter') { this.state.scanning = true; updated = true; }
+      } else {
+        if (!this.state.scanning) {
+          const idx = parseInt(key) - 1;
+          if (idx >= 0 && idx < 5) {
+            let tmp = this.state.packets[idx];
+            this.state.packets[idx] = this.state.packets[idx+1];
+            this.state.packets[idx+1] = tmp;
+            this.state.swaps++;
+            if (this.manager.audio) this.manager.audio.click();
             updated = true;
-            if (nx === this.state.targetX && ny === this.state.targetY) this.complete();
           }
         }
+      }
+    }
+
+    if (this.chapter === 3) {
+      let nx = this.state.x;
+      let ny = this.state.y;
+      if (this.role === 'room') {
+        if (key === 'w' || key === 'ArrowUp') ny--;
+        if (key === 's' || key === 'ArrowDown') ny++;
+      } else {
+        if (key === 'a' || key === 'ArrowLeft') nx--;
+        if (key === 'd' || key === 'ArrowRight') nx++;
+      }
+
+      if (nx >= 0 && nx < 5 && ny >= 0 && ny < 5 && (nx !== this.state.x || ny !== this.state.y)) {
+        this.state.x = nx;
+        this.state.y = ny;
+        if (this.manager.audio) this.manager.audio.click();
+        
+        let hitMine = this.state.mines.some(m => m.x === nx && m.y === ny);
+        if (hitMine) {
+          this.state.x = 2; this.state.y = 2;
+          this.state.score = 0;
+          this.state.cores.forEach(c => c.active = true);
+          if (this.manager.audio) this.manager.audio.error();
+        } else {
+          let core = this.state.cores.find(c => c.x === nx && c.y === ny && c.active);
+          if (core) {
+            core.active = false;
+            this.state.score++;
+            if (this.manager.audio) this.manager.audio.solve();
+          }
+        }
+        updated = true;
       }
     }
 
@@ -804,28 +796,38 @@ export class ChapterScene {
       }
     }
 
-    if (this.chapter === 6) {
-      if (this.role === 'room' && (key === ' ' || key === 'Enter')) {
-        this.state.roomHolding = true;
-        updated = true;
+    if (this.chapter === 6 && !this.state.showing) {
+      let val = -1;
+      if (this.role === 'room') {
+        if (key === 'a') val = 0;
+        if (key === 'd') val = 1;
+      } else {
+        if (key === 'ArrowLeft') val = 2;
+        if (key === 'ArrowRight') val = 3;
       }
-      if (this.role === 'terminal') {
-        if (key === 'Backspace') {
-          this.state.typing = this.state.typing.slice(0, -1);
-          updated = true;
-        } else if (key === 'Enter') {
-          if (this.state.typing.toUpperCase() === this.state.targetCode) {
-            this.complete();
-          } else {
-            this.state.typing = "";
-            if (this.manager.audio) this.manager.audio.error();
-            updated = true;
-          }
-        } else if (key.length === 1 && key.match(/[a-zA-Z0-9]/)) {
-          this.state.typing += key.toUpperCase();
+
+      if (val !== -1) {
+        this.state.input.push(val);
+        const expected = this.state.sequence[this.state.input.length - 1];
+        if (val === expected) {
           if (this.manager.audio) this.manager.audio.click();
-          updated = true;
+          if (this.state.input.length === this.state.round) {
+            this.state.round++;
+            this.state.input = [];
+            this.state.showing = true;
+            this.state.showTimer = -0.5; // pause
+            if (this.manager.audio) this.manager.audio.solve();
+            if (this.state.round > this.state.sequence.length) {
+              this.complete();
+            }
+          }
+        } else {
+          this.state.input = [];
+          this.state.showing = true;
+          this.state.showTimer = -0.5;
+          if (this.manager.audio) this.manager.audio.error();
         }
+        updated = true;
       }
     }
 
@@ -839,6 +841,20 @@ export class ChapterScene {
     if (this.completed) return;
     let updated = false;
 
+    if (this.chapter === 1) {
+      if (this.role === 'room') {
+        if (key === 'a' || key === 'ArrowLeft') { this.state.r1 = false; updated = true; }
+        if (key === 'd' || key === 'ArrowRight') { this.state.r2 = false; updated = true; }
+      } else {
+        if (key === 'ArrowLeft' || key === 'a') { this.state.t1 = false; updated = true; }
+        if (key === 'ArrowRight' || key === 'd') { this.state.t2 = false; updated = true; }
+      }
+    }
+
+    if (this.chapter === 2 && this.role === 'room') {
+      if (key === ' ' || key === 'Enter') { this.state.scanning = false; updated = true; }
+    }
+
     if (this.chapter === 4 && this.role === 'room') {
       if (key === ' ' || key === 'Enter') {
         this.state.pinched = false;
@@ -849,13 +865,6 @@ export class ChapterScene {
     if (this.chapter === 5) {
       if (this.role === 'room' && (key === ' ' || key === 'Enter')) { this.state.roomSpace = false; updated = true; }
       if (this.role === 'terminal' && (key === ' ' || key === 'Enter')) { this.state.termSpace = false; updated = true; }
-    }
-
-    if (this.chapter === 6 && this.role === 'room') {
-      if (key === ' ' || key === 'Enter') {
-        this.state.roomHolding = false;
-        updated = true;
-      }
     }
 
     if (updated && !this.completed) {
