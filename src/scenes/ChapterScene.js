@@ -59,36 +59,32 @@ const CHAPTER_CONFIGS = {
     })
   },
   4: {
-    instruction: {
-      room: "> PINCH CAMERA TO SNIP PROTOCOLS",
-      terminal: "> REFERENCE DISCONNECT SEQUENCE"
-    },
-    narrative: ["physical connections remain", "sever the wrong one and we fail"],
+    instruction: "> ALIGN PHYSICAL VECTORS TO FUSE DATA NODES",
+    narrative: ["the links are severed", "bridge the gap between us"],
     initState: () => ({
-      wires: [
-        { id: 'A', y: -90, cut: false, pattern: 'solid' },
-        { id: 'B', y: -30, cut: false, pattern: 'dashed' },
-        { id: 'C', y: 30, cut: false, pattern: 'dotted' },
-        { id: 'D', y: 90, cut: false, pattern: 'thick' }
+      roomCursorX: -200, roomCursorY: 0,
+      termCursorX: 200, termCursorY: 0,
+      roomLoaded: false, termLoaded: false,
+      nodes: [
+        { lx: -150, ly: -100, rx: 150, ry: 50, fused: false },
+        { lx: -150, ly: 0, rx: 150, ry: -100, fused: false },
+        { lx: -150, ly: 100, rx: 150, ry: 100, fused: false }
       ],
-      cutOrder: ['C', 'A', 'D', 'B'],
-      cutIndex: 0,
-      pinched: false,
-      ml5Loaded: false,
-      cursorX: 0, cursorY: 0
+      fuseTimer: 0,
+      activeIndex: 0
     })
   },
   5: {
     instruction: {
-      room: "> CONTROL VERTICAL LASER (A/D)",
-      terminal: "> CONTROL HORIZONTAL LASER (W/S)"
+      room: "> ALIGN VERTICAL LASER TO MATCH TARGET",
+      terminal: "> TRACK MOBILE TARGET AND ALIGN HORIZONTAL LASER"
     },
-    narrative: ["we must strike together", "or not at all"],
+    narrative: ["it keeps moving", "we must catch it"],
     initState: () => ({
       roomX: 5, termY: 5,
       targetX: 2, targetY: 8,
       roomSpace: false, termSpace: false,
-      hits: 0, targetTimer: 0
+      hits: 0, targetTimer: 5
     })
   },
   6: {
@@ -188,64 +184,29 @@ export class ChapterScene {
       video.play();
       if (window.ml5) {
         this.handpose = window.ml5.handpose(video, () => {
-          if (this.chapter === 7) {
+          if (this.chapter === 4 || this.chapter === 7) {
             if (this.role === 'room') this.state.roomLoaded = true;
             if (this.role === 'terminal') this.state.termLoaded = true;
-          } else {
-            this.state.ml5Loaded = true;
           }
           this.sync();
         });
         this.handpose.on('predict', results => {
           if (results.length > 0 && !this.completed) {
-            const thumb = results[0].annotations.thumb[3];
             const index = results[0].annotations.indexFinger[3];
-            const dist = Math.hypot(thumb[0] - index[0], thumb[1] - index[1]);
-            const isPinching = dist < 40;
-            
             const targetX = ((320 - index[0]) / 320 - 0.5) * 800; 
             const targetY = (index[1] / 240 - 0.5) * 600;
 
-            if (this.chapter === 4 && this.role === 'room') {
-               this.state.cursorX += (targetX - this.state.cursorX) * 0.3;
-               this.state.cursorY += (targetY - this.state.cursorY) * 0.3;
-               
-               if (isPinching && !this.state.pinched) {
-                 this.state.pinched = true;
-                 // Snip logic
-                 for (let i = 0; i < this.state.wires.length; i++) {
-                   const w = this.state.wires[i];
-                   if (!w.cut && Math.abs(this.state.cursorY - w.y) < 20) {
-                     if (w.id === this.state.cutOrder[this.state.cutIndex]) {
-                       w.cut = true;
-                       this.state.cutIndex++;
-                       if (this.manager.audio) this.manager.audio.click();
-                       if (this.state.cutIndex >= 4) this.complete();
-                     } else {
-                       if (this.manager.audio) this.manager.audio.error();
-                       this.state.wires.forEach(wire => wire.cut = false);
-                       this.state.cutIndex = 0;
-                     }
-                     break;
-                   }
-                 }
-               } else if (!isPinching && this.state.pinched) {
-                 this.state.pinched = false;
-               }
-               this.sync();
-            }
-
-            if (this.chapter === 7) {
+            if (this.chapter === 4 || this.chapter === 7) {
               if (this.role === 'room') {
                 let rx = this.state.roomCursorX + (targetX - this.state.roomCursorX) * 0.3;
                 let ry = this.state.roomCursorY + (targetY - this.state.roomCursorY) * 0.3;
-                network.syncState({ chapter: 7, state: { roomCursorX: rx, roomCursorY: ry } });
+                network.syncState({ chapter: this.chapter, state: { roomCursorX: rx, roomCursorY: ry } });
                 this.state.roomCursorX = rx;
                 this.state.roomCursorY = ry;
               } else if (this.role === 'terminal') {
                 let tx = this.state.termCursorX + (targetX - this.state.termCursorX) * 0.3;
                 let ty = this.state.termCursorY + (targetY - this.state.termCursorY) * 0.3;
-                network.syncState({ chapter: 7, state: { termCursorX: tx, termCursorY: ty } });
+                network.syncState({ chapter: this.chapter, state: { termCursorX: tx, termCursorY: ty } });
                 this.state.termCursorX = tx;
                 this.state.termCursorY = ty;
               }
@@ -276,27 +237,54 @@ export class ChapterScene {
       this.sync();
     }
 
-    if (this.chapter === 4 && this.role === 'room') {
+    if (this.chapter === 4 && !this.completed) {
       this.setupML5();
+      if (this.role === 'room' && this.state.roomLoaded && this.state.termLoaded) {
+        const node = this.state.nodes[this.state.activeIndex];
+        if (node) {
+          const roomDist = Math.hypot(this.state.roomCursorX - node.lx, this.state.roomCursorY - node.ly);
+          const termDist = Math.hypot(this.state.termCursorX - node.rx, this.state.termCursorY - node.ry);
+          
+          if (roomDist < 30 && termDist < 30) {
+            this.state.fuseTimer += dt;
+            if (this.state.fuseTimer > 1.5) {
+              node.fused = true;
+              this.state.fuseTimer = 0;
+              this.state.activeIndex++;
+              if (this.manager.audio) this.manager.audio.solve();
+              if (this.state.activeIndex >= this.state.nodes.length) this.complete();
+            }
+          } else {
+            this.state.fuseTimer = 0;
+          }
+          this.sync();
+        }
+      }
     }
 
     if (this.chapter === 5 && !this.completed) {
-      this.state.targetTimer -= dt;
-      if (this.state.targetTimer <= 0) {
-        this.state.targetX = Math.floor(Math.random() * 10);
-        this.state.targetY = Math.floor(Math.random() * 10);
-        this.state.targetTimer = 3;
-        this.sync();
-      }
-      
-      if (this.state.roomX === this.state.targetX && this.state.termY === this.state.targetY) {
-        if (this.state.roomSpace && this.state.termSpace) {
-          this.state.hits++;
-          this.state.targetTimer = 0;
-          this.state.roomSpace = false;
-          this.state.termSpace = false;
-          if (this.manager.audio) this.manager.audio.click();
-          if (this.state.hits >= 3) this.complete();
+      if (this.role === 'room') {
+        this.state.targetTimer -= dt;
+        if (this.state.targetTimer <= 0) {
+          this.state.targetX = Math.floor(Math.random() * 10);
+          this.state.targetY = Math.floor(Math.random() * 10);
+          this.state.targetTimer = 5;
+          if (this.manager.audio) this.manager.audio.error();
+          this.sync();
+        }
+        
+        if (this.state.roomX === this.state.targetX && this.state.termY === this.state.targetY) {
+          if (this.state.roomSpace && this.state.termSpace) {
+            this.state.hits++;
+            this.state.targetX = Math.floor(Math.random() * 10);
+            this.state.targetY = Math.floor(Math.random() * 10);
+            this.state.targetTimer = 5;
+            this.state.roomSpace = false;
+            this.state.termSpace = false;
+            if (this.manager.audio) this.manager.audio.click();
+            if (this.state.hits >= 4) this.complete();
+            this.sync();
+          }
         }
       }
     }
@@ -558,73 +546,88 @@ export class ChapterScene {
   }
 
   drawChapter4(ctx) {
-    if (this.role === 'room') {
-      if (!this.state.ml5Loaded) {
-        ctx.font = `200 0.9rem 'JetBrains Mono', monospace`;
-        ctx.fillStyle = '#888';
-        ctx.fillText("calibrating sensor... fallback: hold SPACE and mouse to snip", 0, -150);
+    if ((this.role === 'room' && !this.state.roomLoaded) || (this.role === 'terminal' && !this.state.termLoaded)) {
+      ctx.font = `200 0.9rem 'JetBrains Mono', monospace`;
+      ctx.fillStyle = '#888';
+      ctx.fillText("calibrating dual optical sensors... fallback: use mouse", 0, -150);
+    }
+
+    this.state.nodes.forEach((n, i) => {
+      ctx.fillStyle = n.fused ? '#fff' : (i === this.state.activeIndex ? '#888' : '#333');
+      
+      // Left Node
+      ctx.beginPath(); ctx.arc(n.lx, n.ly, 15, 0, Math.PI * 2); ctx.fill();
+      // Right Node
+      ctx.beginPath(); ctx.arc(n.rx, n.ry, 15, 0, Math.PI * 2); ctx.fill();
+
+      // If fused, draw line
+      if (n.fused) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(n.lx, n.ly); ctx.lineTo(n.rx, n.ry); ctx.stroke();
       }
-      this.state.wires.forEach(w => {
-        ctx.strokeStyle = w.cut ? '#333' : '#aaa';
-        ctx.lineWidth = w.pattern === 'thick' ? 5 : 2;
-        if (w.pattern === 'dashed') ctx.setLineDash([10, 10]);
-        else if (w.pattern === 'dotted') ctx.setLineDash([2, 5]);
-        else ctx.setLineDash([]);
+    });
 
-        ctx.beginPath();
-        ctx.moveTo(-200, w.y);
-        ctx.lineTo(200, w.y);
-        ctx.stroke();
-
-        ctx.fillStyle = '#555';
-        ctx.fillText(w.id, -220, w.y);
-      });
+    const activeNode = this.state.nodes[this.state.activeIndex];
+    if (activeNode && this.state.fuseTimer > 0) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(this.state.roomCursorX, this.state.roomCursorY);
+      ctx.lineTo(this.state.termCursorX, this.state.termCursorY);
+      ctx.stroke();
       ctx.setLineDash([]);
       
-      ctx.fillStyle = this.state.pinched ? '#fff' : '#555';
-      ctx.beginPath();
-      ctx.arc(this.state.cursorX, this.state.cursorY, 8, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.font = `200 1.2rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#e8e8e8';
-      ctx.textAlign = 'left';
-      ctx.fillText(`DISCONNECT PROTOCOL:`, -150, -100);
-      this.state.cutOrder.forEach((id, i) => {
-        ctx.fillStyle = i < this.state.cutIndex ? '#444' : '#eee';
-        ctx.fillText(`${i+1}. SEVER CONNECTION ${id}`, -150, -50 + i * 40);
-      });
-      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`FUSING... ${Math.floor(this.state.fuseTimer / 1.5 * 100)}%`, 0, -150);
     }
+
+    // Room cursor
+    ctx.fillStyle = this.role === 'room' ? '#fff' : 'rgba(255,255,255,0.3)';
+    ctx.beginPath(); ctx.arc(this.state.roomCursorX, this.state.roomCursorY, 8, 0, Math.PI * 2); ctx.fill();
+
+    // Term cursor
+    ctx.fillStyle = this.role === 'terminal' ? '#fff' : 'rgba(255,255,255,0.3)';
+    ctx.beginPath(); ctx.arc(this.state.termCursorX, this.state.termCursorY, 8, 0, Math.PI * 2); ctx.fill();
   }
 
   drawChapter5(ctx) {
     const cs = 40;
-    const ox = -200;
-    const oy = -200;
+    const ox = -200, oy = -200;
 
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
-        const px = ox + x * cs;
-        const py = oy + y * cs;
-        ctx.fillStyle = '#111';
-        if (this.role === 'room' && x === this.state.roomX) ctx.fillStyle = '#333';
-        if (this.role === 'terminal' && y === this.state.termY) ctx.fillStyle = '#333';
-        
-        ctx.fillRect(px + 2, py + 2, cs - 4, cs - 4);
-      }
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= 10; i++) {
+      ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + 400); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + 400, oy + i * cs); ctx.stroke();
     }
 
-    ctx.fillStyle = '#fff';
-    ctx.fillText('O', ox + this.state.targetX * cs + cs/2, oy + this.state.targetY * cs + cs/2);
+    ctx.strokeStyle = this.state.roomSpace ? '#fff' : '#666';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(ox + this.state.roomX * cs + cs/2, oy);
+    ctx.lineTo(ox + this.state.roomX * cs + cs/2, oy + 400);
+    ctx.stroke();
 
-    if (this.role === 'room') {
-      ctx.fillStyle = this.state.roomSpace ? '#fff' : '#888';
-      ctx.fillRect(ox + this.state.roomX * cs + cs/2 - 2, oy, 4, 400);
-    } else {
-      ctx.fillStyle = this.state.termSpace ? '#fff' : '#888';
-      ctx.fillRect(ox, oy + this.state.termY * cs + cs/2 - 2, 400, 4);
+    ctx.strokeStyle = this.state.termSpace ? '#fff' : '#666';
+    ctx.beginPath();
+    ctx.moveTo(ox, oy + this.state.termY * cs + cs/2);
+    ctx.lineTo(ox + 400, oy + this.state.termY * cs + cs/2);
+    ctx.stroke();
+
+    if (this.role === 'terminal') {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(ox + this.state.targetX * cs + cs/2, oy + this.state.targetY * cs + cs/2, 10, 0, Math.PI*2);
+      ctx.fill();
     }
+    
+    ctx.fillStyle = '#444';
+    ctx.font = `300 1rem 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`HITS: ${this.state.hits} / 4`, 0, 240);
   }
 
   drawChapter6(ctx) {
@@ -764,7 +767,7 @@ export class ChapterScene {
       }
     }
 
-    if (this.chapter === 4 && this.role === 'room' && !this.state.ml5Loaded) {
+    if (this.chapter === 4 && this.role === 'room') {
       if (key === ' ' || key === 'Enter') {
         if (!this.state.pinched) {
           this.state.pinched = true;
@@ -775,8 +778,10 @@ export class ChapterScene {
               if (w.id === this.state.cutOrder[this.state.cutIndex]) {
                 w.cut = true;
                 this.state.cutIndex++;
+                if (this.manager.audio) this.manager.audio.click();
                 if (this.state.cutIndex >= 4) this.complete();
               } else {
+                if (this.manager.audio) this.manager.audio.error();
                 this.state.wires.forEach(wire => wire.cut = false);
                 this.state.cutIndex = 0;
               }
@@ -834,7 +839,7 @@ export class ChapterScene {
     if (this.completed) return;
     let updated = false;
 
-    if (this.chapter === 4 && this.role === 'room' && !this.state.ml5Loaded) {
+    if (this.chapter === 4 && this.role === 'room') {
       if (key === ' ' || key === 'Enter') {
         this.state.pinched = false;
         updated = true;
@@ -863,10 +868,20 @@ export class ChapterScene {
     const cx = x - this.width / 2;
     const cy = y - this.height / 2;
 
-    if (this.chapter === 4 && this.role === 'room' && !this.state.ml5Loaded) {
-      this.state.cursorX += (cx - this.state.cursorX) * 0.3;
-      this.state.cursorY += (cy - this.state.cursorY) * 0.3;
-      this.sync();
+    if (this.chapter === 4 || this.chapter === 7) {
+      if (this.role === 'room' && !this.state.roomLoaded) {
+        let rx = this.state.roomCursorX + (cx - this.state.roomCursorX) * 0.3;
+        let ry = this.state.roomCursorY + (cy - this.state.roomCursorY) * 0.3;
+        network.syncState({ chapter: this.chapter, state: { roomCursorX: rx, roomCursorY: ry } });
+        this.state.roomCursorX = rx;
+        this.state.roomCursorY = ry;
+      } else if (this.role === 'terminal' && !this.state.termLoaded) {
+        let tx = this.state.termCursorX + (cx - this.state.termCursorX) * 0.3;
+        let ty = this.state.termCursorY + (cy - this.state.termCursorY) * 0.3;
+        network.syncState({ chapter: this.chapter, state: { termCursorX: tx, termCursorY: ty } });
+        this.state.termCursorX = tx;
+        this.state.termCursorY = ty;
+      }
     }
   }
 
