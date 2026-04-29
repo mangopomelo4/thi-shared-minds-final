@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
+    "mqtt": "^5.15.1",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5"
   },

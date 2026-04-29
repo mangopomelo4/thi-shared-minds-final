@@ -1,0 +1,19 @@
+const mqtt = require('mqtt');
+const brokers = [
+  'wss://test.mosquitto.org:8081',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://broker.emqx.io:8084/mqtt'
+];
+
+brokers.forEach(b => {
+  const start = Date.now();
+  const c = mqtt.connect(b, { connectTimeout: 3000 });
+  c.on('connect', () => {
+    console.log(b, 'connected in', Date.now() - start, 'ms');
+    c.end();
+  });
+  c.on('error', (err) => {
+    console.log(b, 'error', err.message);
+    c.end();
+  });
+});
