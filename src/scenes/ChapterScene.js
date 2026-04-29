@@ -7,86 +7,81 @@ const FONT_NARRATIVE = "'JetBrains Mono', monospace";
 const CHAPTER_CONFIGS = {
   1: {
     instruction: {
-      room: "> ANALYZE SCRAMBLED DATA",
-      terminal: "> TYPE TO REVEAL. WRONG KEYS DISTORT."
+      room: "> HOLD SLIDER AT 50 FOR 3 SECONDS [LEFT/RIGHT ARROWS]",
+      terminal: "> MOVING YOUR MOUSE CAUSES JITTER."
     },
-    narrative: ["we are disconnected", "find the words"],
+    narrative: ["the signal is unstable", "find the balance"],
     initState: () => ({
-      target: "AWAKEN",
-      typed: "",
-      noise: 1.0
+      slider: 0,
+      holdTimer: 0
     })
   },
   2: {
-    instruction: {
-      room: "> DIRECT THEIR HAND. YOU CAN SEE THE NODES.",
-      terminal: "> USE [W/A/S/D] TO MOVE, [SPACE] TO CONNECT. YOU ARE BLIND."
-    },
-    narrative: ["form the structure", "trust my vision"],
+    instruction: "> TOUCH THE MOVING CIRCLE AT THE EXACT SAME TIME. [MOUSE]",
+    narrative: ["catch the drift", "we must converge"],
     initState: () => ({
-      dots: [
-        {x: 0, y: -100}, {x: 100, y: 0}, {x: 0, y: 100}, {x: -100, y: 0}
-      ],
-      connections: [],
-      targetConnections: [[0,1], [1,2], [2,3], [3,0]],
-      termX: 0, termY: 0,
-      activeStart: -1
+      cx: 0, cy: 0,
+      vx: 2, vy: 2,
+      roomX: -200, roomY: 0,
+      termX: 200, termY: 0
     })
   },
   3: {
     instruction: {
-      room: "> INITIATE MOVEMENT [SPACE]",
-      terminal: "> USE CURSOR AS A PHYSICAL BARRIER"
+      room: "> ALIGN LETTERS HORIZONTALLY [LEFT/RIGHT ARROWS]",
+      terminal: "> ALIGN LETTERS VERTICALLY [MOUSE UP/DOWN]"
     },
-    narrative: ["the blocks are drifting", "guide them into place"],
+    narrative: ["the fragments are scattered", "bring them together"],
     initState: () => ({
-      blockX: -200, blockY: 0,
-      targetX: 0, targetY: 0,
-      moving: false,
-      termCursorX: 200, termCursorY: 0,
-      termLoaded: false
+      text: "ALIGNMENT",
+      roomShiftX: 0,
+      termShiftY: 0,
+      offsets: [ // Parallax offsets to make them align only at shift=100
+        {x: 2, y: -1}, {x: -1.5, y: 2}, {x: 3, y: 0.5},
+        {x: -2, y: -2}, {x: 1, y: 1.5}, {x: -3, y: 3},
+        {x: 2.5, y: -1.5}, {x: -1, y: 1}, {x: 0.5, y: -2.5}
+      ]
     })
   },
   4: {
     instruction: {
-      room: "> DICTATE THE ARCHITECTURE",
-      terminal: "> TYPE TO BUILD. BACKSPACE TO DESTROY."
+      room: "> REPRODUCE THE SHAPE. [CLICK] TO DRAW.",
+      terminal: "> PREVENT ERRORS. [CLICK] TO ERASE. (0.5s DELAY)"
     },
-    narrative: ["build what i see", "erase the errors"],
+    narrative: ["build the structure", "clear the noise"],
     initState: () => ({
-      targetSentence: "RECONSTRUCT",
-      typed: ""
+      grid: Array(400).fill(false),
+      targetGrid: Array(400).fill(false),
+      history: [] // For 0.5s delay
     })
   },
   5: {
-    instruction: {
-      room: "> MONITOR STABILITY",
-      terminal: "> HOLD [SPACE] TO STABILIZE. TAP [ENTER] TO ADVANCE."
-    },
-    narrative: ["the core is fluctuating", "find the rhythm"],
+    instruction: "> PRESS [1-4]. SEQUENCE MUST ALTERNATE (A -> B -> A -> B). CAUTION: SYSTEM MAY SWAP INPUT OWNERSHIP.",
+    narrative: ["who is pressing", "who is in control"],
     initState: () => ({
-      stability: 0, // 0 = unstable, 1 = stable
-      progress: 0,
-      isHolding: false
+      sequence: [],
+      swapped: false,
+      swapTimer: 2.0
     })
   },
   6: {
-    instruction: "> HOLD STEADY",
-    narrative: ["we are almost one", "hold steady"],
+    instruction: {
+      room: "> ALIGN CIRCLE WITH SQUARE. [MOUSE]",
+      terminal: "> ALIGN SQUARE WITH CIRCLE. [ML5 HAND] PINCH TO LOCK."
+    },
+    narrative: ["hold steady", "process complete"],
     initState: () => ({
-      roomX: -150, roomY: 0,
-      termX: 150, termY: 0,
+      roomX: -100, roomY: 0,
+      termX: 100, termY: 0,
       termLocked: false,
       alignTimer: 0,
-      termLoaded: false,
-      roomLoaded: true
+      termLoaded: false
     })
   },
   7: {
     instruction: "",
     narrative: [],
     initState: () => ({
-      phase: 0,
       timer: 0
     })
   }
@@ -205,45 +200,79 @@ export class ChapterScene {
     }
 
     if (this.chapter === 1 && !this.completed && this.role === 'room') {
-      this.state.noise = Math.max(0, this.state.noise - dt * 2.0);
-      if (this.state.typed === this.state.target && this.state.noise === 0) this.complete();
+      if (this.state.slider >= 48 && this.state.slider <= 52) {
+        this.state.holdTimer += dt;
+        if (this.state.holdTimer >= 3.0) this.complete();
+      } else {
+        this.state.holdTimer = 0;
+      }
       this.sync();
     }
 
     if (this.chapter === 2 && !this.completed && this.role === 'room') {
-      if (this.state.connections.length === this.state.targetConnections.length) this.complete();
+      this.state.cx += this.state.vx;
+      this.state.cy += this.state.vy;
+      
+      if (this.state.cx > 300 || this.state.cx < -300) this.state.vx *= -1;
+      if (this.state.cy > 200 || this.state.cy < -200) this.state.vy *= -1;
+
+      const dRoom = Math.hypot(this.state.cx - this.state.roomX, this.state.cy - this.state.roomY);
+      const dTerm = Math.hypot(this.state.cx - this.state.termX, this.state.cy - this.state.termY);
+
+      if (dRoom < 30 && dTerm < 30) {
+        this.complete();
+      } else if (dRoom < 30 || dTerm < 30) {
+        this.state.vx *= 1.05;
+        this.state.vy *= 1.05;
+      }
+      this.sync();
     }
 
     if (this.chapter === 3 && !this.completed && this.role === 'room') {
-      if (this.state.moving) {
-        this.state.blockX += dt * 150;
-        const dx = this.state.blockX - this.state.termCursorX;
-        const dy = this.state.blockY - this.state.termCursorY;
-        if (Math.hypot(dx, dy) < 40) {
-          this.state.moving = false;
-          if (Math.abs(this.state.blockX - this.state.targetX) < 10) this.complete();
-          else { this.state.blockX = -200; if(this.manager.audio) this.manager.audio.error(); }
-        } else if (this.state.blockX > 300) {
-          this.state.moving = false;
-          this.state.blockX = -200;
-        }
-        this.sync();
+      if (this.state.roomShiftX === 100 && this.state.termShiftY === 100) {
+        this.complete();
       }
     }
 
-    if (this.chapter === 4 && !this.completed && this.role === 'room') {
-      if (this.state.typed === this.state.targetSentence) this.complete();
+    if (this.chapter === 4 && !this.completed) {
+      if (this.role === 'room') {
+        // Build target shape once
+        if (!this.targetBuilt) {
+          this.targetBuilt = true;
+          for(let x=5; x<15; x++) {
+            for(let y=5; y<15; y++) {
+              if (x===5 || x===14 || y===5 || y===14) this.state.targetGrid[y*20+x] = true;
+            }
+          }
+        }
+        
+        let match = true;
+        for(let i=0; i<400; i++) {
+          if (this.state.grid[i] !== this.state.targetGrid[i]) match = false;
+        }
+        if (match) this.complete();
+      }
+      
+      if (this.role === 'terminal') {
+        // Terminal syncs history to delayedGrid
+        const now = Date.now();
+        while (this.state.history.length > 0 && now - this.state.history[0].time > 500) {
+          const action = this.state.history.shift();
+          this.state.grid[action.idx] = action.val;
+        }
+      }
     }
 
     if (this.chapter === 5 && !this.completed && this.role === 'room') {
-      if (this.state.isHolding) {
-        this.state.stability = Math.min(1.0, this.state.stability + dt * 0.5);
-        this.state.progress = Math.max(0, this.state.progress - dt * 0.1);
-      } else {
-        this.state.stability = Math.max(0, this.state.stability - dt * 1.0);
+      this.state.swapTimer -= dt;
+      if (this.state.swapTimer <= 0) {
+        this.state.swapped = !this.state.swapped;
+        this.state.swapTimer = 1.0 + Math.random() * 2.0;
+        this.sync();
       }
-      if (this.state.progress >= 1.0 && this.state.stability > 0.8) this.complete();
-      this.sync();
+      if (this.state.sequence.length >= 8) {
+        this.complete();
+      }
     }
 
     if (this.chapter === 6 && !this.completed) {
@@ -253,7 +282,7 @@ export class ChapterScene {
         const dy = this.state.roomY - this.state.termY;
         if (Math.hypot(dx, dy) < 20 && this.state.termLocked) {
           this.state.alignTimer += dt;
-          if (this.state.alignTimer > 3.0) this.complete();
+          if (this.state.alignTimer > 2.0) this.complete();
         } else {
           this.state.alignTimer = 0;
         }
@@ -365,122 +394,103 @@ export class ChapterScene {
   }
 
   drawChapter1(ctx) {
-    if (this.role === 'room') {
-      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
-      let disp = "";
-      for (let i = 0; i < this.state.target.length; i++) {
-        if (i < this.state.typed.length) {
-          disp += this.state.target[i];
-        } else {
-          if (this.state.noise > 0 || Math.random() < 0.1) {
-            disp += String.fromCharCode(65 + Math.floor(Math.random() * 26));
-          } else {
-            disp += '_';
-          }
-        }
-      }
-      ctx.fillStyle = this.state.noise > 0 ? '#f55' : '#fff';
-      if (this.state.noise > 0) {
-        ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10);
-      }
-      ctx.fillText(disp, 0, 0);
-    } else {
-      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#888';
-      ctx.fillText(`> ${this.state.typed}_`, 0, 0);
+    // Slider base
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-200, -10, 400, 20);
+    
+    // Target zone
+    ctx.fillStyle = 'rgba(0,255,0,0.3)';
+    ctx.fillRect(-8, -15, 16, 30);
+
+    // Slider knob
+    const knobX = -200 + (this.state.slider / 100) * 400;
+    ctx.fillStyle = (this.state.slider >= 48 && this.state.slider <= 52) ? '#0f0' : '#fff';
+    ctx.fillRect(knobX - 4, -20, 8, 40);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
+    ctx.fillText(Math.floor(this.state.slider), 0, -50);
+
+    if (this.state.holdTimer > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.state.holdTimer / 3})`;
+      ctx.fillRect(-100, 50, 200, 5);
     }
   }
 
   drawChapter2(ctx) {
-    if (this.role === 'room') {
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      this.state.targetConnections.forEach(c => {
-        const d1 = this.state.dots[c[0]], d2 = this.state.dots[c[1]];
-        ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y); ctx.stroke();
-      });
-      this.state.dots.forEach((d, i) => {
-        ctx.fillStyle = '#888';
-        ctx.beginPath(); ctx.arc(d.x, d.y, 10, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#222';
-        ctx.font = `10px monospace`;
-        ctx.fillText(i.toString(), d.x, d.y + 4);
-      });
-    }
-
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
-    this.state.connections.forEach(c => {
-      const d1 = this.state.dots[c[0]], d2 = this.state.dots[c[1]];
-      ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y); ctx.stroke();
-    });
+    ctx.beginPath();
+    ctx.arc(this.state.cx, this.state.cy, 30, 0, Math.PI * 2);
+    ctx.stroke();
 
-    if (this.state.isDragging && this.state.activeStart !== -1) {
-      const start = this.state.dots[this.state.activeStart];
-      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(this.state.termX, this.state.termY); ctx.stroke();
-    }
+    ctx.fillStyle = this.role === 'room' ? '#0f0' : 'rgba(0,255,0,0.3)';
+    ctx.beginPath(); ctx.arc(this.state.roomX, this.state.roomY, 10, 0, Math.PI*2); ctx.fill();
 
-    if (this.role === 'terminal') {
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(this.state.termX, this.state.termY, 5, 0, Math.PI*2); ctx.fill();
-    }
+    ctx.fillStyle = this.role === 'terminal' ? '#0cf' : 'rgba(0,204,255,0.3)';
+    ctx.beginPath(); ctx.arc(this.state.termX, this.state.termY, 10, 0, Math.PI*2); ctx.fill();
   }
 
   drawChapter3(ctx) {
-    ctx.strokeStyle = '#444';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(this.state.targetX - 25, -25, 50, 50);
-
     ctx.fillStyle = '#fff';
-    ctx.fillRect(this.state.blockX - 10, this.state.blockY - 10, 20, 20);
-
-    if (this.role === 'terminal' || this.state.termLoaded) {
-      ctx.fillStyle = '#888';
-      ctx.fillRect(this.state.termCursorX - 5, this.state.termCursorY - 50, 10, 100);
+    ctx.font = `300 2.5rem 'JetBrains Mono', monospace`;
+    
+    const spacing = 40;
+    const startX = -(this.state.text.length * spacing) / 2;
+    
+    for (let i = 0; i < this.state.text.length; i++) {
+      const off = this.state.offsets[i];
+      // When roomShiftX = 100, dx = 0.
+      const dx = (this.state.roomShiftX - 100) * off.x;
+      const dy = (this.state.termShiftY - 100) * off.y;
+      
+      ctx.fillText(this.state.text[i], startX + i * spacing + dx, dy);
     }
   }
 
   drawChapter4(ctx) {
-    if (this.role === 'room') {
-      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#fff';
-      ctx.fillText(this.state.targetSentence, 0, -50);
-    }
+    const cs = 15;
+    const ox = -150, oy = -150;
     
-    const blockWidth = 20;
-    const startX = -(this.state.typed.length * blockWidth) / 2;
-    for (let i = 0; i < this.state.typed.length; i++) {
-      ctx.fillStyle = this.state.typed[i] === this.state.targetSentence[i] ? '#fff' : '#f00';
-      ctx.fillRect(startX + i * blockWidth, 20, blockWidth - 2, 40);
+    if (this.role === 'room') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      for (let y = 0; y < 20; y++) {
+        for (let x = 0; x < 20; x++) {
+          if (this.state.targetGrid[y*20+x]) {
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillRect(ox + x*cs, oy + y*cs, cs, cs);
+          }
+        }
+      }
     }
-    if (this.role === 'terminal') {
-      ctx.font = `300 1rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#666';
-      ctx.fillText(`> ${this.state.typed}_`, 0, 100);
+
+    for (let y = 0; y < 20; y++) {
+      for (let x = 0; x < 20; x++) {
+        ctx.strokeStyle = '#222';
+        ctx.strokeRect(ox + x * cs, oy + y * cs, cs, cs);
+        if (this.state.grid[y*20+x]) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(ox + x * cs + 2, oy + y * cs + 2, cs - 4, cs - 4);
+        }
+      }
     }
   }
 
   drawChapter5(ctx) {
-    const r = 50 + this.state.progress * 100;
-    
-    const noise = (1 - this.state.stability) * 20;
-    const currentR = r + (Math.random() - 0.5) * noise;
-
-    ctx.strokeStyle = this.state.stability > 0.8 ? '#0f0' : '#fff';
-    ctx.lineWidth = 2 + this.state.stability * 3;
-    
-    ctx.beginPath();
-    ctx.arc(0, 0, currentR, 0, Math.PI * 2);
-    ctx.stroke();
-
-    if (this.role === 'terminal') {
-      ctx.fillStyle = '#444';
-      ctx.fillRect(-100, 180, 200, 10);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(-100, 180, this.state.stability * 200, 10);
-      ctx.font = `300 1rem 'JetBrains Mono', monospace`;
-      ctx.fillText('STABILITY', 0, 210);
+    if (this.state.swapped) {
+      ctx.fillStyle = '#f00';
+      ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
+      ctx.fillText("[ SYSTEM SWAP ACTIVE ]", 0, -100);
     }
+
+    const seqStr = this.state.sequence.map(v => v.role + v.key).join(" ");
+    ctx.fillStyle = '#fff';
+    ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+    ctx.fillText(`> ${seqStr}_`, 0, 0);
+
+    ctx.fillStyle = '#888';
+    ctx.font = `300 1rem 'JetBrains Mono', monospace`;
+    ctx.fillText("EXPECTED: ROOM -> TERM -> ROOM -> TERM...", 0, 100);
   }
 
   drawChapter6(ctx) {
@@ -490,22 +500,19 @@ export class ChapterScene {
       ctx.fillText("calibrating ML5 hand tracking...", 0, -150);
     }
 
-    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(this.state.roomX, this.state.roomY, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = this.state.termLocked ? '#fff' : '#888';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(this.state.termX, this.state.termY, 25, 0, Math.PI * 2);
+    ctx.arc(this.state.roomX, this.state.roomY, 30, 0, Math.PI * 2);
     ctx.stroke();
 
+    ctx.strokeStyle = this.state.termLocked ? '#0f0' : '#888';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(this.state.termX - 30, this.state.termY - 30, 60, 60);
+
     if (this.state.alignTimer > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${this.state.alignTimer / 3})`;
-      ctx.beginPath();
-      ctx.arc((this.state.roomX + this.state.termX)/2, (this.state.roomY + this.state.termY)/2, 30 + this.state.alignTimer * 10, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.state.alignTimer / 2})`;
+      ctx.fillRect(-200, 150, 400 * (this.state.alignTimer / 2), 10);
     }
   }
 
@@ -522,8 +529,7 @@ export class ChapterScene {
     
     if (this.state.timer > 2 && this.state.timer < 5) ctx.fillText("process complete", 0, 0);
     else if (this.state.timer > 6 && this.state.timer < 9) ctx.fillText("corruption resolved", 0, 0);
-    else if (this.state.timer > 10 && this.state.timer < 13) ctx.fillText("thank you", 0, 0);
-    else if (this.state.timer >= 14) ctx.fillText("the system continues", 0, 0);
+    else if (this.state.timer > 10 && this.state.timer < 14) ctx.fillText("thank you", 0, 0);
   }
 
   onKeyDown(key, e) {
@@ -540,75 +546,34 @@ export class ChapterScene {
 
     let updated = false;
 
-    if (this.chapter === 1 && this.role === 'terminal') {
-      if (key.length === 1 && key.match(/[a-zA-Z0-9 ]/)) {
-        const nextChar = this.state.target[this.state.typed.length];
-        if (key.toUpperCase() === nextChar) {
-          this.state.typed += key.toUpperCase();
+    if (this.chapter === 1 && this.role === 'room') {
+      if (key === 'ArrowLeft') { this.state.slider = Math.max(0, this.state.slider - 1); updated = true; }
+      if (key === 'ArrowRight') { this.state.slider = Math.min(100, this.state.slider + 1); updated = true; }
+    }
+
+    if (this.chapter === 3 && this.role === 'room') {
+      if (key === 'ArrowLeft') { this.state.roomShiftX -= 5; updated = true; }
+      if (key === 'ArrowRight') { this.state.roomShiftX += 5; updated = true; }
+    }
+
+    if (this.chapter === 5) {
+      if (['1','2','3','4'].includes(key)) {
+        let inputRole = this.role;
+        if (this.state.swapped) {
+          inputRole = this.role === 'room' ? 'terminal' : 'room';
+        }
+
+        const expectedRole = this.state.sequence.length % 2 === 0 ? 'room' : 'terminal';
+        
+        if (inputRole === expectedRole) {
+          this.state.sequence.push({ role: inputRole === 'room' ? 'A' : 'B', key: key });
           if (this.manager.audio) this.manager.audio.click();
         } else {
-          this.state.typed = "";
-          this.state.noise = 1.0;
+          this.state.sequence = [];
           if (this.manager.audio) this.manager.audio.error();
         }
         updated = true;
       }
-    }
-
-    if (this.chapter === 2) {
-      if (this.role === 'terminal' && (key === ' ' || key === 'Enter')) {
-        let closest = -1; let minDist = Infinity;
-        this.state.dots.forEach((d, i) => {
-          const dist = Math.hypot(d.x - this.state.termX, d.y - this.state.termY);
-          if (dist < 40 && dist < minDist) { minDist = dist; closest = i; }
-        });
-        if (closest !== -1) {
-          this.state.isDragging = true;
-          this.state.activeStart = closest;
-          if (this.manager.audio) this.manager.audio.click();
-          updated = true;
-        }
-      }
-    }
-
-    if (this.chapter === 3 && this.role === 'room') {
-      if (key === ' ' || key === 'Enter') {
-        this.state.moving = true;
-        updated = true;
-      }
-    }
-
-    if (this.chapter === 4 && this.role === 'terminal') {
-      if (key === 'Backspace') {
-        this.state.typed = this.state.typed.slice(0, -1);
-        if (this.manager.audio) this.manager.audio.click();
-        updated = true;
-      } else if (key.length === 1 && key.match(/[a-zA-Z0-9 ]/)) {
-        if (this.state.typed.length < this.state.targetSentence.length) {
-          this.state.typed += key.toUpperCase();
-          if (this.manager.audio) this.manager.audio.click();
-          updated = true;
-        }
-      }
-    }
-
-    if (this.chapter === 5 && this.role === 'terminal') {
-      if (key === ' ') {
-        this.state.isHolding = true;
-        updated = true;
-      }
-      if (key === 'Enter') {
-        this.state.progress = Math.min(1.0, this.state.progress + 0.1);
-        if (this.manager.audio) this.manager.audio.click();
-        updated = true;
-      }
-    }
-
-    if (this.chapter === 6 && this.role === 'room') {
-      if (key === 'w' || key === 'ArrowUp') { this.state.roomY -= 10; updated = true; }
-      if (key === 's' || key === 'ArrowDown') { this.state.roomY += 10; updated = true; }
-      if (key === 'a' || key === 'ArrowLeft') { this.state.roomX -= 10; updated = true; }
-      if (key === 'd' || key === 'ArrowRight') { this.state.roomX += 10; updated = true; }
     }
 
     if (updated && !this.completed) this.sync();
@@ -616,39 +581,6 @@ export class ChapterScene {
 
   onKeyUp(key, e) {
     this.keys[key] = false;
-    if (this.completed) return;
-    let updated = false;
-
-    if (this.chapter === 2 && this.role === 'terminal') {
-      if (key === ' ' || key === 'Enter') {
-        if (this.state.isDragging && this.state.activeStart !== -1) {
-          let closest = -1; let minDist = Infinity;
-          this.state.dots.forEach((d, i) => {
-            const dist = Math.hypot(d.x - this.state.termX, d.y - this.state.termY);
-            if (dist < 40 && dist < minDist) { minDist = dist; closest = i; }
-          });
-          if (closest !== -1 && closest !== this.state.activeStart) {
-            const exists = this.state.connections.some(c => (c[0]===this.state.activeStart && c[1]===closest) || (c[1]===this.state.activeStart && c[0]===closest));
-            if (!exists) {
-              this.state.connections.push([this.state.activeStart, closest]);
-              if (this.manager.audio) this.manager.audio.solve();
-            }
-          }
-        }
-        this.state.isDragging = false;
-        this.state.activeStart = -1;
-        updated = true;
-      }
-    }
-
-    if (this.chapter === 5 && this.role === 'terminal') {
-      if (key === ' ') {
-        this.state.isHolding = false;
-        updated = true;
-      }
-    }
-
-    if (updated && !this.completed) this.sync();
   }
 
   onMouseMove(x, y) {
@@ -656,16 +588,47 @@ export class ChapterScene {
     const cx = x - this.width / 2;
     const cy = y - this.height / 2;
 
-    if (this.chapter === 2 && this.role === 'terminal') {
-      this.state.termX = cx;
-      this.state.termY = cy;
+    if (this.chapter === 1 && this.role === 'terminal') {
+      const jitter = (Math.random() - 0.5) * 6;
+      this.state.slider = Math.max(0, Math.min(100, this.state.slider + jitter));
       this.sync();
     }
-    if (this.chapter === 3 && this.role === 'terminal') {
-      this.state.termCursorX = cx;
-      this.state.termCursorY = cy;
-      this.state.termLoaded = true;
+
+    if (this.chapter === 2) {
+      if (this.role === 'room') { this.state.roomX = cx; this.state.roomY = cy; }
+      else { this.state.termX = cx; this.state.termY = cy; }
       this.sync();
+    }
+
+    if (this.chapter === 3 && this.role === 'terminal') {
+      this.state.termShiftY += (cy - this.state.termShiftY) * 0.1;
+      this.sync();
+    }
+    
+    if (this.chapter === 6 && this.role === 'room') {
+      this.state.roomX = cx;
+      this.state.roomY = cy;
+      this.sync();
+    }
+  }
+
+  onClick(x, y) {
+    if (this.completed) return;
+    const cx = x - this.width / 2;
+    const cy = y - this.height / 2;
+
+    if (this.chapter === 4) {
+      const gx = Math.floor((cx + 150) / 15);
+      const gy = Math.floor((cy + 150) / 15);
+      if (gx >= 0 && gx < 20 && gy >= 0 && gy < 20) {
+        const idx = gy * 20 + gx;
+        if (this.role === 'room') {
+          this.state.grid[idx] = true;
+          this.sync();
+        } else {
+          this.state.history.push({ time: Date.now(), idx: idx, val: false });
+        }
+      }
     }
   }
 
