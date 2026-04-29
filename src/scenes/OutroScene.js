@@ -51,14 +51,14 @@ export class OutroScene {
   draw(ctx) {
     const w = this.width, h = this.height;
 
-    ctx.fillStyle = '#0a0a0a';
+    ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
     ctx.globalAlpha = this.alpha;
 
     // Subtle grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
     ctx.lineWidth = 0.5;
     for (let x = 0; x < w; x += 60) {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
@@ -86,7 +86,7 @@ export class OutroScene {
       if (lineAlpha > 0.01) {
         ctx.globalAlpha = this.alpha * lineAlpha;
         ctx.font = `100 1.6rem ${FONT}`;
-        ctx.fillStyle = '#bbb';
+        ctx.fillStyle = '#000';
         ctx.fillText(line.text, w / 2, h / 2);
       }
     }
@@ -107,12 +107,12 @@ export class OutroScene {
       const btnX = w / 2 - btnW / 2;
       const btnY = h / 2 - btnH / 2;
 
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = '#fff';
       ctx.fillRect(btnX, btnY, btnW, btnH);
-      ctx.strokeStyle = '#444';
+      ctx.strokeStyle = '#000';
       ctx.strokeRect(btnX, btnY, btnW, btnH);
 
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = '#000';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText("corrupt", w / 2, btnY + btnH / 2 + 2);

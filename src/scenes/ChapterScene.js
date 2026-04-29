@@ -60,7 +60,7 @@ const CHAPTER_CONFIGS = {
   },
   4: {
     instruction: {
-      room: "> PINCH CAMERA TO SNIP PROTOCOLS",
+      room: "> HOVER CAMERA OVER PROTOCOL TO SNIP (1.5s)",
       terminal: "> REFERENCE DISCONNECT SEQUENCE"
     },
     narrative: ["physical connections remain", "sever the wrong one and we fail"],
@@ -73,7 +73,8 @@ const CHAPTER_CONFIGS = {
       ],
       cutOrder: ['C', 'A', 'D', 'B'],
       cutIndex: 0,
-      pinched: false,
+      hoverWireId: null,
+      hoverTimer: 0,
       ml5Loaded: false,
       cursorX: 0, cursorY: 0
     })
@@ -201,50 +202,28 @@ export class ChapterScene {
             const thumb = results[0].annotations.thumb[3];
             const index = results[0].annotations.indexFinger[3];
             const dist = Math.hypot(thumb[0] - index[0], thumb[1] - index[1]);
-            const isPinching = dist < 40;
+            const isPinching = dist < 60; // Increased threshold for easier pinching
             
-            const targetX = ((320 - index[0]) / 320 - 0.5) * 800; 
-            const targetY = (index[1] / 240 - 0.5) * 600;
+            // Increased multiplier so user doesn't have to reach edges of webcam
+            const targetX = ((320 - index[0]) / 320 - 0.5) * 1200; 
+            const targetY = (index[1] / 240 - 0.5) * 900;
 
             if (this.chapter === 4 && this.role === 'room') {
-               this.state.cursorX += (targetX - this.state.cursorX) * 0.3;
-               this.state.cursorY += (targetY - this.state.cursorY) * 0.3;
-               
-               if (isPinching && !this.state.pinched) {
-                 this.state.pinched = true;
-                 // Snip logic
-                 for (let i = 0; i < this.state.wires.length; i++) {
-                   const w = this.state.wires[i];
-                   if (!w.cut && Math.abs(this.state.cursorY - w.y) < 20) {
-                     if (w.id === this.state.cutOrder[this.state.cutIndex]) {
-                       w.cut = true;
-                       this.state.cutIndex++;
-                       if (this.manager.audio) this.manager.audio.click();
-                       if (this.state.cutIndex >= 4) this.complete();
-                     } else {
-                       if (this.manager.audio) this.manager.audio.error();
-                       this.state.wires.forEach(wire => wire.cut = false);
-                       this.state.cutIndex = 0;
-                     }
-                     break;
-                   }
-                 }
-               } else if (!isPinching && this.state.pinched) {
-                 this.state.pinched = false;
-               }
+               this.state.cursorX += (targetX - this.state.cursorX) * 0.1;
+               this.state.cursorY += (targetY - this.state.cursorY) * 0.1;
                this.sync();
             }
 
             if (this.chapter === 7) {
               if (this.role === 'room') {
-                let rx = this.state.roomCursorX + (targetX - this.state.roomCursorX) * 0.3;
-                let ry = this.state.roomCursorY + (targetY - this.state.roomCursorY) * 0.3;
+                let rx = this.state.roomCursorX + (targetX - this.state.roomCursorX) * 0.1;
+                let ry = this.state.roomCursorY + (targetY - this.state.roomCursorY) * 0.1;
                 network.syncState({ chapter: 7, state: { roomCursorX: rx, roomCursorY: ry } });
                 this.state.roomCursorX = rx;
                 this.state.roomCursorY = ry;
               } else if (this.role === 'terminal') {
-                let tx = this.state.termCursorX + (targetX - this.state.termCursorX) * 0.3;
-                let ty = this.state.termCursorY + (targetY - this.state.termCursorY) * 0.3;
+                let tx = this.state.termCursorX + (targetX - this.state.termCursorX) * 0.1;
+                let ty = this.state.termCursorY + (targetY - this.state.termCursorY) * 0.1;
                 network.syncState({ chapter: 7, state: { termCursorX: tx, termCursorY: ty } });
                 this.state.termCursorX = tx;
                 this.state.termCursorY = ty;
@@ -276,8 +255,44 @@ export class ChapterScene {
       this.sync();
     }
 
-    if (this.chapter === 4 && this.role === 'room') {
+    if (this.chapter === 4 && this.role === 'room' && !this.completed) {
       this.setupML5();
+      let hoveredId = null;
+      for (let i = 0; i < this.state.wires.length; i++) {
+        const w = this.state.wires[i];
+        if (!w.cut && Math.abs(this.state.cursorY - w.y) < 30) {
+           hoveredId = w.id;
+           break;
+        }
+      }
+
+      if (hoveredId) {
+        if (this.state.hoverWireId !== hoveredId) {
+          this.state.hoverWireId = hoveredId;
+          this.state.hoverTimer = 0;
+        } else {
+          this.state.hoverTimer += dt;
+          if (this.state.hoverTimer > 1.5) {
+            if (hoveredId === this.state.cutOrder[this.state.cutIndex]) {
+              let w = this.state.wires.find(w => w.id === hoveredId);
+              w.cut = true;
+              this.state.cutIndex++;
+              if (this.manager.audio) this.manager.audio.click();
+              if (this.state.cutIndex >= 4) this.complete();
+            } else {
+              if (this.manager.audio) this.manager.audio.error();
+              this.state.wires.forEach(wire => wire.cut = false);
+              this.state.cutIndex = 0;
+            }
+            this.state.hoverWireId = null;
+            this.state.hoverTimer = 0;
+          }
+        }
+      } else {
+        this.state.hoverWireId = null;
+        this.state.hoverTimer = 0;
+      }
+      this.sync();
     }
 
     if (this.chapter === 5 && !this.completed) {
@@ -423,7 +438,7 @@ export class ChapterScene {
 
     if (this.exitFade > 0) {
       ctx.globalAlpha = Math.min(1, this.exitFade);
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = this.chapter === 7 ? '#fff' : '#0a0a0a';
       ctx.fillRect(0, 0, w, h);
     }
   }
@@ -581,9 +596,9 @@ export class ChapterScene {
       });
       ctx.setLineDash([]);
       
-      ctx.fillStyle = this.state.pinched ? '#fff' : '#555';
+      ctx.fillStyle = this.state.hoverTimer > 0 ? '#fff' : '#555';
       ctx.beginPath();
-      ctx.arc(this.state.cursorX, this.state.cursorY, 8, 0, Math.PI * 2);
+      ctx.arc(this.state.cursorX, this.state.cursorY, 8 + this.state.hoverTimer * 8, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.font = `200 1.2rem 'JetBrains Mono', monospace`;
@@ -681,7 +696,7 @@ export class ChapterScene {
     if (this.state.progress > 0) {
       ctx.fillStyle = `rgba(255, 255, 255, ${this.state.progress})`;
       ctx.beginPath();
-      ctx.arc(0, 0, 50, 0, Math.PI * 2);
+      ctx.arc(0, 0, 50 + this.state.progress * 1000, 0, Math.PI * 2);
       ctx.fill();
     }
   }
