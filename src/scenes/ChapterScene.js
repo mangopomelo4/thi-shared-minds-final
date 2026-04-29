@@ -7,98 +7,87 @@ const FONT_NARRATIVE = "'JetBrains Mono', monospace";
 const CHAPTER_CONFIGS = {
   1: {
     instruction: {
-      room: "> HOLD [A] TO CHARGE NODE 1, [D] TO CHARGE NODE 2",
-      terminal: "> HOLD [Left] TO CHARGE NODE 3, [Right] TO CHARGE NODE 4"
+      room: "> ANALYZE SCRAMBLED DATA",
+      terminal: "> TYPE TO REVEAL. WRONG KEYS DISTORT."
     },
-    narrative: ["power levels are unstable", "synchronize the charge exactly"],
+    narrative: ["we are disconnected", "find the words"],
     initState: () => ({
-      c1: 0, c2: 0, c3: 0, c4: 0,
-      r1: false, r2: false, t1: false, t2: false
+      target: "AWAKEN",
+      typed: "",
+      noise: 1.0
     })
   },
   2: {
     instruction: {
-      room: "> HOLD [SPACE] TO SCAN. YOU CANNOT SORT.",
-      terminal: "> PRESS [1-5] TO SWAP ADJACENT. YOU CANNOT SCAN."
+      room: "> DIRECT THEIR HAND. YOU CAN SEE THE NODES.",
+      terminal: "> USE [W/A/S/D] TO MOVE, [SPACE] TO CONNECT. YOU ARE BLIND."
     },
-    narrative: ["the sequence is scrambled", "i can see it, you can fix it"],
+    narrative: ["form the structure", "trust my vision"],
     initState: () => ({
-      packets: ['E', 'B', 'F', 'A', 'D', 'C'],
-      scanning: false,
-      swaps: 0
+      dots: [
+        {x: 0, y: -100}, {x: 100, y: 0}, {x: 0, y: 100}, {x: -100, y: 0}
+      ],
+      connections: [],
+      targetConnections: [[0,1], [1,2], [2,3], [3,0]],
+      termX: 0, termY: 0,
+      activeStart: -1
     })
   },
   3: {
     instruction: {
-      room: "> MOVE CORE (W/S). YOU CANNOT SEE MINES.",
-      terminal: "> MOVE CORE (A/D). YOU CANNOT SEE TARGETS."
+      room: "> INITIATE MOVEMENT [SPACE]",
+      terminal: "> USE CURSOR AS A PHYSICAL BARRIER"
     },
-    narrative: ["we are blind to the whole", "guide my hand"],
+    narrative: ["the blocks are drifting", "guide them into place"],
     initState: () => ({
-      x: 2, y: 2,
-      cores: [
-        {x: 0, y: 0, active: true}, {x: 4, y: 0, active: true},
-        {x: 0, y: 4, active: true}, {x: 4, y: 4, active: true}
-      ],
-      mines: [
-        {x: 1, y: 1}, {x: 3, y: 1}, {x: 1, y: 3}, {x: 3, y: 3},
-        {x: 2, y: 0}, {x: 2, y: 4}, {x: 0, y: 2}, {x: 4, y: 2}
-      ],
-      score: 0
+      blockX: -200, blockY: 0,
+      targetX: 0, targetY: 0,
+      moving: false,
+      termCursorX: 200, termCursorY: 0,
+      termLoaded: false
     })
   },
   4: {
-    instruction: "> ALIGN PHYSICAL VECTORS TO FUSE DATA NODES",
-    narrative: ["the links are severed", "bridge the gap between us"],
+    instruction: {
+      room: "> DICTATE THE ARCHITECTURE",
+      terminal: "> TYPE TO BUILD. BACKSPACE TO DESTROY."
+    },
+    narrative: ["build what i see", "erase the errors"],
     initState: () => ({
-      roomCursorX: -200, roomCursorY: 0,
-      termCursorX: 200, termCursorY: 0,
-      roomLoaded: false, termLoaded: false,
-      nodes: [
-        { lx: -150, ly: -100, rx: 150, ry: 50, fused: false },
-        { lx: -150, ly: 0, rx: 150, ry: -100, fused: false },
-        { lx: -150, ly: 100, rx: 150, ry: 100, fused: false }
-      ],
-      fuseTimer: 0,
-      activeIndex: 0
+      targetSentence: "RECONSTRUCT",
+      typed: ""
     })
   },
   5: {
     instruction: {
-      room: "> ALIGN VERTICAL LASER TO MATCH TARGET",
-      terminal: "> TRACK MOBILE TARGET AND ALIGN HORIZONTAL LASER"
+      room: "> MONITOR STABILITY",
+      terminal: "> HOLD [SPACE] TO STABILIZE. TAP [ENTER] TO ADVANCE."
     },
-    narrative: ["it keeps moving", "we must catch it"],
+    narrative: ["the core is fluctuating", "find the rhythm"],
     initState: () => ({
-      roomX: 5, termY: 5,
-      targetX: 2, targetY: 8,
-      roomSpace: false, termSpace: false,
-      hits: 0, targetTimer: 5
+      stability: 0, // 0 = unstable, 1 = stable
+      progress: 0,
+      isHolding: false
     })
   },
   6: {
-    instruction: {
-      room: "> REPLICATE SEQUENCE (A, D)",
-      terminal: "> REPLICATE SEQUENCE (Left, Right)"
-    },
-    narrative: ["the pattern is shifting", "memorize the flow together"],
+    instruction: "> HOLD STEADY",
+    narrative: ["we are almost one", "hold steady"],
     initState: () => ({
-      sequence: [0, 2, 1, 3, 0], // 0: room A, 1: room D, 2: term L, 3: term R
-      input: [],
-      showing: true,
-      showTimer: 0,
-      showIndex: 0,
-      round: 1
+      roomX: -150, roomY: 0,
+      termX: 150, termY: 0,
+      termLocked: false,
+      alignTimer: 0,
+      termLoaded: false,
+      roomLoaded: true
     })
   },
   7: {
-    instruction: "> ALIGN PHYSICAL VECTORS",
-    narrative: ["bring your fragments together", "we are the palace"],
+    instruction: "",
+    narrative: [],
     initState: () => ({
-      roomCursorX: -200, roomCursorY: 0,
-      termCursorX: 200, termCursorY: 0,
-      roomLoaded: false, termLoaded: false,
-      progress: 0
+      phase: 0,
+      timer: 0
     })
   }
 };
@@ -176,32 +165,28 @@ export class ChapterScene {
       video.play();
       if (window.ml5) {
         this.handpose = window.ml5.handpose(video, () => {
-          if (this.chapter === 4 || this.chapter === 7) {
-            if (this.role === 'room') this.state.roomLoaded = true;
-            if (this.role === 'terminal') this.state.termLoaded = true;
+          if (this.chapter === 6 && this.role === 'terminal') {
+            this.state.termLoaded = true;
+            this.sync();
           }
-          this.sync();
         });
         this.handpose.on('predict', results => {
           if (results.length > 0 && !this.completed) {
             const index = results[0].annotations.indexFinger[3];
+            const thumb = results[0].annotations.thumb[3];
             const targetX = ((320 - index[0]) / 320 - 0.5) * 800; 
             const targetY = (index[1] / 240 - 0.5) * 600;
+            const pinchDist = Math.hypot(index[0]-thumb[0], index[1]-thumb[1]);
 
-            if (this.chapter === 4 || this.chapter === 7) {
-              if (this.role === 'room') {
-                let rx = this.state.roomCursorX + (targetX - this.state.roomCursorX) * 0.3;
-                let ry = this.state.roomCursorY + (targetY - this.state.roomCursorY) * 0.3;
-                network.syncState({ chapter: this.chapter, state: { roomCursorX: rx, roomCursorY: ry } });
-                this.state.roomCursorX = rx;
-                this.state.roomCursorY = ry;
-              } else if (this.role === 'terminal') {
-                let tx = this.state.termCursorX + (targetX - this.state.termCursorX) * 0.3;
-                let ty = this.state.termCursorY + (targetY - this.state.termCursorY) * 0.3;
-                network.syncState({ chapter: this.chapter, state: { termCursorX: tx, termCursorY: ty } });
-                this.state.termCursorX = tx;
-                this.state.termCursorY = ty;
+            if (this.chapter === 6 && this.role === 'terminal') {
+              if (pinchDist > 30) {
+                this.state.termX += (targetX - this.state.termX) * 0.3;
+                this.state.termY += (targetY - this.state.termY) * 0.3;
+                this.state.termLocked = false;
+              } else {
+                this.state.termLocked = true;
               }
+              this.sync();
             }
           }
         });
@@ -219,133 +204,66 @@ export class ChapterScene {
       this.cyberDeco = Array(5).fill(0).map(() => `0x${Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0')}`);
     }
 
-    if (this.chapter === 1 && !this.completed) {
-      if (this.role === 'room') {
-        const speed = [0.4, 0.6, 0.8, 1.0];
-        if (this.state.r1) this.state.c1 = Math.min(100, this.state.c1 + dt * 100 * speed[0]); else this.state.c1 = Math.max(0, this.state.c1 - dt * 100 * 0.5);
-        if (this.state.r2) this.state.c2 = Math.min(100, this.state.c2 + dt * 100 * speed[1]); else this.state.c2 = Math.max(0, this.state.c2 - dt * 100 * 0.5);
-        if (this.state.t1) this.state.c3 = Math.min(100, this.state.c3 + dt * 100 * speed[2]); else this.state.c3 = Math.max(0, this.state.c3 - dt * 100 * 0.5);
-        if (this.state.t2) this.state.c4 = Math.min(100, this.state.c4 + dt * 100 * speed[3]); else this.state.c4 = Math.max(0, this.state.c4 - dt * 100 * 0.5);
+    if (this.chapter === 1 && !this.completed && this.role === 'room') {
+      this.state.noise = Math.max(0, this.state.noise - dt * 2.0);
+      if (this.state.typed === this.state.target && this.state.noise === 0) this.complete();
+      this.sync();
+    }
 
-        if (this.state.c1 === 100 && this.state.c2 === 100 && this.state.c3 === 100 && this.state.c4 === 100) {
-          this.complete();
+    if (this.chapter === 2 && !this.completed && this.role === 'room') {
+      if (this.state.connections.length === this.state.targetConnections.length) this.complete();
+    }
+
+    if (this.chapter === 3 && !this.completed && this.role === 'room') {
+      if (this.state.moving) {
+        this.state.blockX += dt * 150;
+        const dx = this.state.blockX - this.state.termCursorX;
+        const dy = this.state.blockY - this.state.termCursorY;
+        if (Math.hypot(dx, dy) < 40) {
+          this.state.moving = false;
+          if (Math.abs(this.state.blockX - this.state.targetX) < 10) this.complete();
+          else { this.state.blockX = -200; if(this.manager.audio) this.manager.audio.error(); }
+        } else if (this.state.blockX > 300) {
+          this.state.moving = false;
+          this.state.blockX = -200;
         }
         this.sync();
       }
     }
 
-    if (this.chapter === 2 && !this.completed) {
-      if (this.role === 'room') {
-        const sorted = ['A', 'B', 'C', 'D', 'E', 'F'];
-        let isSorted = true;
-        for(let i=0; i<6; i++) {
-          if(this.state.packets[i] !== sorted[i]) isSorted = false;
-        }
-        if (isSorted) this.complete();
-      }
+    if (this.chapter === 4 && !this.completed && this.role === 'room') {
+      if (this.state.typed === this.state.targetSentence) this.complete();
     }
 
-    if (this.chapter === 3 && !this.completed) {
-      if (this.role === 'room' && this.state.score >= 4) {
-        this.complete();
+    if (this.chapter === 5 && !this.completed && this.role === 'room') {
+      if (this.state.isHolding) {
+        this.state.stability = Math.min(1.0, this.state.stability + dt * 0.5);
+        this.state.progress = Math.max(0, this.state.progress - dt * 0.1);
+      } else {
+        this.state.stability = Math.max(0, this.state.stability - dt * 1.0);
       }
+      if (this.state.progress >= 1.0 && this.state.stability > 0.8) this.complete();
+      this.sync();
     }
 
     if (this.chapter === 6 && !this.completed) {
-      if (this.role === 'room' && this.state.showing) {
-        this.state.showTimer += dt;
-        if (this.state.showTimer > 0.8) {
-          this.state.showTimer = 0;
-          this.state.showIndex++;
-          if (this.state.showIndex >= this.state.round) {
-            this.state.showing = false;
-            this.state.showIndex = 0;
-          }
-          if (this.manager.audio) this.manager.audio.click();
-          this.sync();
-        }
-      }
-    }
-
-    if (this.chapter === 4 && !this.completed) {
       this.setupML5();
-      if (this.role === 'room' && this.state.roomLoaded && this.state.termLoaded) {
-        const node = this.state.nodes[this.state.activeIndex];
-        if (node) {
-          const roomDist = Math.hypot(this.state.roomCursorX - node.lx, this.state.roomCursorY - node.ly);
-          const termDist = Math.hypot(this.state.termCursorX - node.rx, this.state.termCursorY - node.ry);
-          
-          if (roomDist < 30 && termDist < 30) {
-            this.state.fuseTimer += dt;
-            if (this.state.fuseTimer > 1.5) {
-              node.fused = true;
-              this.state.fuseTimer = 0;
-              this.state.activeIndex++;
-              if (this.manager.audio) this.manager.audio.solve();
-              if (this.state.activeIndex >= this.state.nodes.length) this.complete();
-            }
-          } else {
-            this.state.fuseTimer = 0;
-          }
-          this.sync();
+      if (this.role === 'room' && this.state.termLoaded) {
+        const dx = this.state.roomX - this.state.termX;
+        const dy = this.state.roomY - this.state.termY;
+        if (Math.hypot(dx, dy) < 20 && this.state.termLocked) {
+          this.state.alignTimer += dt;
+          if (this.state.alignTimer > 3.0) this.complete();
+        } else {
+          this.state.alignTimer = 0;
         }
-      }
-    }
-
-    if (this.chapter === 5 && !this.completed) {
-      if (this.role === 'room') {
-        this.state.targetTimer -= dt;
-        if (this.state.targetTimer <= 0) {
-          this.state.targetX = Math.floor(Math.random() * 10);
-          this.state.targetY = Math.floor(Math.random() * 10);
-          this.state.targetTimer = 5;
-          if (this.manager.audio) this.manager.audio.error();
-          this.sync();
-        }
-        
-        if (this.state.roomX === this.state.targetX && this.state.termY === this.state.targetY) {
-          if (this.state.roomSpace && this.state.termSpace) {
-            this.state.hits++;
-            this.state.targetX = Math.floor(Math.random() * 10);
-            this.state.targetY = Math.floor(Math.random() * 10);
-            this.state.targetTimer = 5;
-            this.state.roomSpace = false;
-            this.state.termSpace = false;
-            if (this.manager.audio) this.manager.audio.click();
-            if (this.state.hits >= 4) this.complete();
-            this.sync();
-          }
-        }
-      }
-    }
-
-    if (this.chapter === 6 && !this.completed) {
-      if (this.role === 'room') {
-        this.state.sliderX = Math.sin(this.time * 2) * 200 + Math.cos(this.time * 5) * 50;
         this.sync();
       }
     }
 
     if (this.chapter === 7 && !this.completed) {
-      this.setupML5();
-      if (this.role === 'room') {
-        const dRoom = Math.hypot(this.state.roomCursorX, this.state.roomCursorY);
-        const dTerm = Math.hypot(this.state.termCursorX, this.state.termCursorY);
-        const overlap = Math.hypot(this.state.roomCursorX - this.state.termCursorX, this.state.roomCursorY - this.state.termCursorY);
-        
-        let prog = this.state.progress;
-        if (dRoom < 60 && dTerm < 60 && overlap < 60) {
-          prog += dt * 0.3;
-          if (prog >= 1) this.complete();
-        } else {
-          prog = Math.max(0, prog - dt * 0.5);
-        }
-        
-        if (prog !== this.state.progress) {
-          network.syncState({ chapter: 7, state: { progress: prog } });
-          this.state.progress = prog;
-        }
-      }
+      this.state.timer += dt;
+      if (this.state.timer > 15) this.complete();
     }
 
     // Narrative timing
@@ -447,393 +365,253 @@ export class ChapterScene {
   }
 
   drawChapter1(ctx) {
-    ctx.fillStyle = '#111';
-    ctx.fillRect(-200, -100, 400, 200);
-
-    const draws = [
-      {c: this.state.c1, active: this.state.r1, label: 'C1'},
-      {c: this.state.c2, active: this.state.r2, label: 'C2'},
-      {c: this.state.c3, active: this.state.t1, label: 'C3'},
-      {c: this.state.c4, active: this.state.t2, label: 'C4'}
-    ];
-
-    draws.forEach((d, i) => {
-      const x = -150 + i * 100;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(x - 20, -50, 40, 100);
-      
-      ctx.fillStyle = d.c === 100 ? '#fff' : (d.active ? '#aaa' : '#666');
-      const h = (d.c / 100) * 100;
-      ctx.fillRect(x - 20, 50 - h, 40, h);
-
-      ctx.fillStyle = '#eee';
-      ctx.font = `200 1rem 'JetBrains Mono', monospace`;
-      ctx.fillText(d.label, x, 80);
-    });
+    if (this.role === 'room') {
+      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+      let disp = "";
+      for (let i = 0; i < this.state.target.length; i++) {
+        if (i < this.state.typed.length) {
+          disp += this.state.target[i];
+        } else {
+          if (this.state.noise > 0 || Math.random() < 0.1) {
+            disp += String.fromCharCode(65 + Math.floor(Math.random() * 26));
+          } else {
+            disp += '_';
+          }
+        }
+      }
+      ctx.fillStyle = this.state.noise > 0 ? '#f55' : '#fff';
+      if (this.state.noise > 0) {
+        ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10);
+      }
+      ctx.fillText(disp, 0, 0);
+    } else {
+      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+      ctx.fillStyle = '#888';
+      ctx.fillText(`> ${this.state.typed}_`, 0, 0);
+    }
   }
 
   drawChapter2(ctx) {
-    if (this.role === 'terminal' && !this.state.scanning) {
-      ctx.font = `300 1.2rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#fff';
-      ctx.fillText(`AWAITING SCAN...`, 0, -100);
-    }
-    
-    this.state.packets.forEach((p, i) => {
-      const x = -150 + i * 60;
-      ctx.fillStyle = '#222';
-      ctx.fillRect(x - 25, -25, 50, 50);
-
-      if (this.state.scanning) {
-        ctx.fillStyle = '#fff';
-        ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
-        ctx.fillText(p, x, 0);
-      } else {
-        ctx.fillStyle = '#666';
-        ctx.fillText('#', x, 0);
-      }
-
-      ctx.fillStyle = '#888';
-      ctx.font = `200 0.8rem 'JetBrains Mono', monospace`;
-      ctx.fillText(`[${i+1}]`, x, 40);
-    });
-  }
-
-  drawChapter3(ctx) {
-    const cs = 60;
-    const ox = -150, oy = -150;
-    ctx.font = `200 1.5rem 'JetBrains Mono', monospace`;
-
-    for (let y = 0; y < 5; y++) {
-      for (let x = 0; x < 5; x++) {
-        const px = ox + x * cs;
-        const py = oy + y * cs;
-
-        let isCore = this.state.cores.some(c => c.x === x && c.y === y && c.active);
-        let isMine = this.state.mines.some(m => m.x === x && m.y === y);
-        let isPlayer = this.state.x === x && this.state.y === y;
-
-        ctx.strokeStyle = '#222';
-        ctx.strokeRect(px, py, cs, cs);
-
-        if (isPlayer) {
-          ctx.fillStyle = '#fff';
-          ctx.fillText('@', px + cs/2, py + cs/2);
-        } else if (isCore && this.role === 'room') {
-          ctx.fillStyle = '#0f0';
-          ctx.fillText('O', px + cs/2, py + cs/2);
-        } else if (isMine && this.role === 'terminal') {
-          ctx.fillStyle = '#f00';
-          ctx.fillText('X', px + cs/2, py + cs/2);
-        }
-      }
-    }
-    
-    ctx.fillStyle = '#aaa';
-    ctx.fillText(`CORES: ${this.state.score} / 4`, 0, 200);
-  }
-
-  drawChapter4(ctx) {
-    if ((this.role === 'room' && !this.state.roomLoaded) || (this.role === 'terminal' && !this.state.termLoaded)) {
-      ctx.font = `200 0.9rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#888';
-      ctx.fillText("calibrating dual optical sensors... fallback: use mouse", 0, -150);
-    }
-
-    this.state.nodes.forEach((n, i) => {
-      ctx.fillStyle = n.fused ? '#fff' : (i === this.state.activeIndex ? '#888' : '#333');
-      
-      // Left Node
-      ctx.beginPath(); ctx.arc(n.lx, n.ly, 15, 0, Math.PI * 2); ctx.fill();
-      // Right Node
-      ctx.beginPath(); ctx.arc(n.rx, n.ry, 15, 0, Math.PI * 2); ctx.fill();
-
-      // If fused, draw line
-      if (n.fused) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(n.lx, n.ly); ctx.lineTo(n.rx, n.ry); ctx.stroke();
-      }
-    });
-
-    const activeNode = this.state.nodes[this.state.activeIndex];
-    if (activeNode && this.state.fuseTimer > 0) {
-      ctx.strokeStyle = '#fff';
+    if (this.role === 'room') {
+      ctx.strokeStyle = '#333';
       ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(this.state.roomCursorX, this.state.roomCursorY);
-      ctx.lineTo(this.state.termCursorX, this.state.termCursorY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      
-      ctx.fillStyle = '#fff';
-      ctx.fillText(`FUSING... ${Math.floor(this.state.fuseTimer / 1.5 * 100)}%`, 0, -150);
+      this.state.targetConnections.forEach(c => {
+        const d1 = this.state.dots[c[0]], d2 = this.state.dots[c[1]];
+        ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y); ctx.stroke();
+      });
+      this.state.dots.forEach((d, i) => {
+        ctx.fillStyle = '#888';
+        ctx.beginPath(); ctx.arc(d.x, d.y, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#222';
+        ctx.font = `10px monospace`;
+        ctx.fillText(i.toString(), d.x, d.y + 4);
+      });
     }
 
-    // Room cursor
-    ctx.fillStyle = this.role === 'room' ? '#fff' : 'rgba(255,255,255,0.3)';
-    ctx.beginPath(); ctx.arc(this.state.roomCursorX, this.state.roomCursorY, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    this.state.connections.forEach(c => {
+      const d1 = this.state.dots[c[0]], d2 = this.state.dots[c[1]];
+      ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(d2.x, d2.y); ctx.stroke();
+    });
 
-    // Term cursor
-    ctx.fillStyle = this.role === 'terminal' ? '#fff' : 'rgba(255,255,255,0.3)';
-    ctx.beginPath(); ctx.arc(this.state.termCursorX, this.state.termCursorY, 8, 0, Math.PI * 2); ctx.fill();
-  }
-
-  drawChapter5(ctx) {
-    const cs = 40;
-    const ox = -200, oy = -200;
-
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-
-    for (let i = 0; i <= 10; i++) {
-      ctx.beginPath(); ctx.moveTo(ox + i * cs, oy); ctx.lineTo(ox + i * cs, oy + 400); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(ox, oy + i * cs); ctx.lineTo(ox + 400, oy + i * cs); ctx.stroke();
+    if (this.state.isDragging && this.state.activeStart !== -1) {
+      const start = this.state.dots[this.state.activeStart];
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(this.state.termX, this.state.termY); ctx.stroke();
     }
-
-    ctx.strokeStyle = this.state.roomSpace ? '#fff' : '#666';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(ox + this.state.roomX * cs + cs/2, oy);
-    ctx.lineTo(ox + this.state.roomX * cs + cs/2, oy + 400);
-    ctx.stroke();
-
-    ctx.strokeStyle = this.state.termSpace ? '#fff' : '#666';
-    ctx.beginPath();
-    ctx.moveTo(ox, oy + this.state.termY * cs + cs/2);
-    ctx.lineTo(ox + 400, oy + this.state.termY * cs + cs/2);
-    ctx.stroke();
 
     if (this.role === 'terminal') {
       ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(ox + this.state.targetX * cs + cs/2, oy + this.state.targetY * cs + cs/2, 10, 0, Math.PI*2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(this.state.termX, this.state.termY, 5, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  drawChapter3(ctx) {
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(this.state.targetX - 25, -25, 50, 50);
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(this.state.blockX - 10, this.state.blockY - 10, 20, 20);
+
+    if (this.role === 'terminal' || this.state.termLoaded) {
+      ctx.fillStyle = '#888';
+      ctx.fillRect(this.state.termCursorX - 5, this.state.termCursorY - 50, 10, 100);
+    }
+  }
+
+  drawChapter4(ctx) {
+    if (this.role === 'room') {
+      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(this.state.targetSentence, 0, -50);
     }
     
-    ctx.fillStyle = '#444';
-    ctx.font = `300 1rem 'JetBrains Mono', monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`HITS: ${this.state.hits} / 4`, 0, 240);
+    const blockWidth = 20;
+    const startX = -(this.state.typed.length * blockWidth) / 2;
+    for (let i = 0; i < this.state.typed.length; i++) {
+      ctx.fillStyle = this.state.typed[i] === this.state.targetSentence[i] ? '#fff' : '#f00';
+      ctx.fillRect(startX + i * blockWidth, 20, blockWidth - 2, 40);
+    }
+    if (this.role === 'terminal') {
+      ctx.font = `300 1rem 'JetBrains Mono', monospace`;
+      ctx.fillStyle = '#666';
+      ctx.fillText(`> ${this.state.typed}_`, 0, 100);
+    }
+  }
+
+  drawChapter5(ctx) {
+    const r = 50 + this.state.progress * 100;
+    
+    const noise = (1 - this.state.stability) * 20;
+    const currentR = r + (Math.random() - 0.5) * noise;
+
+    ctx.strokeStyle = this.state.stability > 0.8 ? '#0f0' : '#fff';
+    ctx.lineWidth = 2 + this.state.stability * 3;
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, currentR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (this.role === 'terminal') {
+      ctx.fillStyle = '#444';
+      ctx.fillRect(-100, 180, 200, 10);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-100, 180, this.state.stability * 200, 10);
+      ctx.font = `300 1rem 'JetBrains Mono', monospace`;
+      ctx.fillText('STABILITY', 0, 210);
+    }
   }
 
   drawChapter6(ctx) {
-    if (this.state.showing) {
-      ctx.fillStyle = '#fff';
-      ctx.font = `300 2rem 'JetBrains Mono', monospace`;
-      if (this.state.showIndex > 0) {
-        const val = this.state.sequence[this.state.showIndex - 1];
-        let sym = '';
-        if (val === 0) sym = '[ROOM: A]';
-        if (val === 1) sym = '[ROOM: D]';
-        if (val === 2) sym = '[TERM: Left]';
-        if (val === 3) sym = '[TERM: Right]';
-        ctx.fillText(sym, 0, 0);
-      }
-    } else {
+    if ((this.role === 'room' && !this.state.roomLoaded) || (this.role === 'terminal' && !this.state.termLoaded)) {
+      ctx.font = `200 0.9rem 'JetBrains Mono', monospace`;
       ctx.fillStyle = '#888';
-      ctx.font = `300 1.5rem 'JetBrains Mono', monospace`;
-      ctx.fillText(`INPUT SEQUENCE (${this.state.input.length}/${this.state.round})`, 0, -50);
-      
-      const inStr = this.state.input.map(v => {
-        if (v===0) return 'A'; if (v===1) return 'D';
-        if (v===2) return 'L'; if (v===3) return 'R';
-      }).join(' ');
-      
-      ctx.fillStyle = '#fff';
-      ctx.fillText(`> ${inStr}_`, 0, 50);
+      ctx.fillText("calibrating ML5 hand tracking...", 0, -150);
+    }
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(this.state.roomX, this.state.roomY, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = this.state.termLocked ? '#fff' : '#888';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(this.state.termX, this.state.termY, 25, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (this.state.alignTimer > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.state.alignTimer / 3})`;
+      ctx.beginPath();
+      ctx.arc((this.state.roomX + this.state.termX)/2, (this.state.roomY + this.state.termY)/2, 30 + this.state.alignTimer * 10, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
   drawChapter7(ctx) {
-    if ((this.role === 'room' && !this.state.roomLoaded) || (this.role === 'terminal' && !this.state.termLoaded)) {
-      ctx.font = `200 0.9rem 'JetBrains Mono', monospace`;
-      ctx.fillStyle = '#888';
-      ctx.fillText("calibrating dual optical sensors...", 0, -150);
-    }
-
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 4;
+    const p = Math.min(1, this.state.timer / 15);
+    
+    ctx.fillStyle = `rgba(255, 255, 255, ${p})`;
     ctx.beginPath();
-    ctx.arc(0, 0, 50, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = this.role === 'room' ? '#fff' : 'rgba(255,255,255,0.3)';
-    ctx.beginPath();
-    ctx.arc(this.state.roomCursorX, this.state.roomCursorY, 20, 0, Math.PI * 2);
+    ctx.arc(0, 0, 100 + p * 500, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = this.role === 'terminal' ? '#fff' : 'rgba(255,255,255,0.3)';
-    ctx.beginPath();
-    ctx.arc(this.state.termCursorX, this.state.termCursorY, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (this.state.progress > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${this.state.progress})`;
-      ctx.beginPath();
-      ctx.arc(0, 0, 50, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.fillStyle = `rgba(0, 0, 0, ${p > 0.8 ? 1 : p * 1.5})`;
+    ctx.font = `300 2rem 'JetBrains Mono', monospace`;
+    
+    if (this.state.timer > 2 && this.state.timer < 5) ctx.fillText("process complete", 0, 0);
+    else if (this.state.timer > 6 && this.state.timer < 9) ctx.fillText("corruption resolved", 0, 0);
+    else if (this.state.timer > 10 && this.state.timer < 13) ctx.fillText("thank you", 0, 0);
+    else if (this.state.timer >= 14) ctx.fillText("the system continues", 0, 0);
   }
 
   onKeyDown(key, e) {
     this.keys[key] = true;
-
     if (e && e.shiftKey && e.code && e.code.startsWith('Digit')) {
       const targetChapter = parseInt(e.code.replace('Digit', ''), 10);
       if (targetChapter >= 1 && targetChapter <= 7) {
         this.manager.switchTo('chapter', { chapter: targetChapter, role: this.role });
         return;
       }
-      if (targetChapter === 8) {
-        this.manager.switchTo('outro');
-        return;
-      }
     }
-
     if (this.completed) return;
     if (this.manager.audio) this.manager.audio.init();
 
     let updated = false;
 
-    if (this.chapter === 1) {
-      if (this.role === 'room') {
-        if (key === 'a' || key === 'ArrowLeft') { this.state.r1 = true; updated = true; }
-        if (key === 'd' || key === 'ArrowRight') { this.state.r2 = true; updated = true; }
-      } else {
-        if (key === 'ArrowLeft' || key === 'a') { this.state.t1 = true; updated = true; }
-        if (key === 'ArrowRight' || key === 'd') { this.state.t2 = true; updated = true; }
+    if (this.chapter === 1 && this.role === 'terminal') {
+      if (key.length === 1 && key.match(/[a-zA-Z0-9 ]/)) {
+        const nextChar = this.state.target[this.state.typed.length];
+        if (key.toUpperCase() === nextChar) {
+          this.state.typed += key.toUpperCase();
+          if (this.manager.audio) this.manager.audio.click();
+        } else {
+          this.state.typed = "";
+          this.state.noise = 1.0;
+          if (this.manager.audio) this.manager.audio.error();
+        }
+        updated = true;
       }
     }
 
     if (this.chapter === 2) {
-      if (this.role === 'room') {
-        if (key === ' ' || key === 'Enter') { this.state.scanning = true; updated = true; }
-      } else {
-        if (!this.state.scanning) {
-          const idx = parseInt(key) - 1;
-          if (idx >= 0 && idx < 5) {
-            let tmp = this.state.packets[idx];
-            this.state.packets[idx] = this.state.packets[idx+1];
-            this.state.packets[idx+1] = tmp;
-            this.state.swaps++;
-            if (this.manager.audio) this.manager.audio.click();
-            updated = true;
-          }
-        }
-      }
-    }
-
-    if (this.chapter === 3) {
-      let nx = this.state.x;
-      let ny = this.state.y;
-      if (this.role === 'room') {
-        if (key === 'w' || key === 'ArrowUp') ny--;
-        if (key === 's' || key === 'ArrowDown') ny++;
-      } else {
-        if (key === 'a' || key === 'ArrowLeft') nx--;
-        if (key === 'd' || key === 'ArrowRight') nx++;
-      }
-
-      if (nx >= 0 && nx < 5 && ny >= 0 && ny < 5 && (nx !== this.state.x || ny !== this.state.y)) {
-        this.state.x = nx;
-        this.state.y = ny;
-        if (this.manager.audio) this.manager.audio.click();
-        
-        let hitMine = this.state.mines.some(m => m.x === nx && m.y === ny);
-        if (hitMine) {
-          this.state.x = 2; this.state.y = 2;
-          this.state.score = 0;
-          this.state.cores.forEach(c => c.active = true);
-          if (this.manager.audio) this.manager.audio.error();
-        } else {
-          let core = this.state.cores.find(c => c.x === nx && c.y === ny && c.active);
-          if (core) {
-            core.active = false;
-            this.state.score++;
-            if (this.manager.audio) this.manager.audio.solve();
-          }
-        }
-        updated = true;
-      }
-    }
-
-    if (this.chapter === 4 && this.role === 'room') {
-      if (key === ' ' || key === 'Enter') {
-        if (!this.state.pinched) {
-          this.state.pinched = true;
-          updated = true;
-          for (let i = 0; i < this.state.wires.length; i++) {
-            const w = this.state.wires[i];
-            if (!w.cut && Math.abs(this.state.cursorY - w.y) < 20) {
-              if (w.id === this.state.cutOrder[this.state.cutIndex]) {
-                w.cut = true;
-                this.state.cutIndex++;
-                if (this.manager.audio) this.manager.audio.click();
-                if (this.state.cutIndex >= 4) this.complete();
-              } else {
-                if (this.manager.audio) this.manager.audio.error();
-                this.state.wires.forEach(wire => wire.cut = false);
-                this.state.cutIndex = 0;
-              }
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    if (this.chapter === 5) {
-      if (this.role === 'room') {
-        if (key === 'a' || key === 'ArrowLeft') { this.state.roomX = Math.max(0, this.state.roomX - 1); updated = true; }
-        if (key === 'd' || key === 'ArrowRight') { this.state.roomX = Math.min(9, this.state.roomX + 1); updated = true; }
-        if (key === ' ' || key === 'Enter') { this.state.roomSpace = true; updated = true; }
-      } else {
-        if (key === 'w' || key === 'ArrowUp') { this.state.termY = Math.max(0, this.state.termY - 1); updated = true; }
-        if (key === 's' || key === 'ArrowDown') { this.state.termY = Math.min(9, this.state.termY + 1); updated = true; }
-        if (key === ' ' || key === 'Enter') { this.state.termSpace = true; updated = true; }
-      }
-    }
-
-    if (this.chapter === 6 && !this.state.showing) {
-      let val = -1;
-      if (this.role === 'room') {
-        if (key === 'a') val = 0;
-        if (key === 'd') val = 1;
-      } else {
-        if (key === 'ArrowLeft') val = 2;
-        if (key === 'ArrowRight') val = 3;
-      }
-
-      if (val !== -1) {
-        this.state.input.push(val);
-        const expected = this.state.sequence[this.state.input.length - 1];
-        if (val === expected) {
+      if (this.role === 'terminal' && (key === ' ' || key === 'Enter')) {
+        let closest = -1; let minDist = Infinity;
+        this.state.dots.forEach((d, i) => {
+          const dist = Math.hypot(d.x - this.state.termX, d.y - this.state.termY);
+          if (dist < 40 && dist < minDist) { minDist = dist; closest = i; }
+        });
+        if (closest !== -1) {
+          this.state.isDragging = true;
+          this.state.activeStart = closest;
           if (this.manager.audio) this.manager.audio.click();
-          if (this.state.input.length === this.state.round) {
-            this.state.round++;
-            this.state.input = [];
-            this.state.showing = true;
-            this.state.showTimer = -0.5; // pause
-            if (this.manager.audio) this.manager.audio.solve();
-            if (this.state.round > this.state.sequence.length) {
-              this.complete();
-            }
-          }
-        } else {
-          this.state.input = [];
-          this.state.showing = true;
-          this.state.showTimer = -0.5;
-          if (this.manager.audio) this.manager.audio.error();
+          updated = true;
         }
+      }
+    }
+
+    if (this.chapter === 3 && this.role === 'room') {
+      if (key === ' ' || key === 'Enter') {
+        this.state.moving = true;
         updated = true;
       }
     }
 
-    if (updated && !this.completed) {
-      this.sync();
+    if (this.chapter === 4 && this.role === 'terminal') {
+      if (key === 'Backspace') {
+        this.state.typed = this.state.typed.slice(0, -1);
+        if (this.manager.audio) this.manager.audio.click();
+        updated = true;
+      } else if (key.length === 1 && key.match(/[a-zA-Z0-9 ]/)) {
+        if (this.state.typed.length < this.state.targetSentence.length) {
+          this.state.typed += key.toUpperCase();
+          if (this.manager.audio) this.manager.audio.click();
+          updated = true;
+        }
+      }
     }
+
+    if (this.chapter === 5 && this.role === 'terminal') {
+      if (key === ' ') {
+        this.state.isHolding = true;
+        updated = true;
+      }
+      if (key === 'Enter') {
+        this.state.progress = Math.min(1.0, this.state.progress + 0.1);
+        if (this.manager.audio) this.manager.audio.click();
+        updated = true;
+      }
+    }
+
+    if (this.chapter === 6 && this.role === 'room') {
+      if (key === 'w' || key === 'ArrowUp') { this.state.roomY -= 10; updated = true; }
+      if (key === 's' || key === 'ArrowDown') { this.state.roomY += 10; updated = true; }
+      if (key === 'a' || key === 'ArrowLeft') { this.state.roomX -= 10; updated = true; }
+      if (key === 'd' || key === 'ArrowRight') { this.state.roomX += 10; updated = true; }
+    }
+
+    if (updated && !this.completed) this.sync();
   }
 
   onKeyUp(key, e) {
@@ -841,35 +619,36 @@ export class ChapterScene {
     if (this.completed) return;
     let updated = false;
 
-    if (this.chapter === 1) {
-      if (this.role === 'room') {
-        if (key === 'a' || key === 'ArrowLeft') { this.state.r1 = false; updated = true; }
-        if (key === 'd' || key === 'ArrowRight') { this.state.r2 = false; updated = true; }
-      } else {
-        if (key === 'ArrowLeft' || key === 'a') { this.state.t1 = false; updated = true; }
-        if (key === 'ArrowRight' || key === 'd') { this.state.t2 = false; updated = true; }
-      }
-    }
-
-    if (this.chapter === 2 && this.role === 'room') {
-      if (key === ' ' || key === 'Enter') { this.state.scanning = false; updated = true; }
-    }
-
-    if (this.chapter === 4 && this.role === 'room') {
+    if (this.chapter === 2 && this.role === 'terminal') {
       if (key === ' ' || key === 'Enter') {
-        this.state.pinched = false;
+        if (this.state.isDragging && this.state.activeStart !== -1) {
+          let closest = -1; let minDist = Infinity;
+          this.state.dots.forEach((d, i) => {
+            const dist = Math.hypot(d.x - this.state.termX, d.y - this.state.termY);
+            if (dist < 40 && dist < minDist) { minDist = dist; closest = i; }
+          });
+          if (closest !== -1 && closest !== this.state.activeStart) {
+            const exists = this.state.connections.some(c => (c[0]===this.state.activeStart && c[1]===closest) || (c[1]===this.state.activeStart && c[0]===closest));
+            if (!exists) {
+              this.state.connections.push([this.state.activeStart, closest]);
+              if (this.manager.audio) this.manager.audio.solve();
+            }
+          }
+        }
+        this.state.isDragging = false;
+        this.state.activeStart = -1;
         updated = true;
       }
     }
 
-    if (this.chapter === 5) {
-      if (this.role === 'room' && (key === ' ' || key === 'Enter')) { this.state.roomSpace = false; updated = true; }
-      if (this.role === 'terminal' && (key === ' ' || key === 'Enter')) { this.state.termSpace = false; updated = true; }
+    if (this.chapter === 5 && this.role === 'terminal') {
+      if (key === ' ') {
+        this.state.isHolding = false;
+        updated = true;
+      }
     }
 
-    if (updated && !this.completed) {
-      this.sync();
-    }
+    if (updated && !this.completed) this.sync();
   }
 
   onMouseMove(x, y) {
@@ -877,20 +656,16 @@ export class ChapterScene {
     const cx = x - this.width / 2;
     const cy = y - this.height / 2;
 
-    if (this.chapter === 4 || this.chapter === 7) {
-      if (this.role === 'room' && !this.state.roomLoaded) {
-        let rx = this.state.roomCursorX + (cx - this.state.roomCursorX) * 0.3;
-        let ry = this.state.roomCursorY + (cy - this.state.roomCursorY) * 0.3;
-        network.syncState({ chapter: this.chapter, state: { roomCursorX: rx, roomCursorY: ry } });
-        this.state.roomCursorX = rx;
-        this.state.roomCursorY = ry;
-      } else if (this.role === 'terminal' && !this.state.termLoaded) {
-        let tx = this.state.termCursorX + (cx - this.state.termCursorX) * 0.3;
-        let ty = this.state.termCursorY + (cy - this.state.termCursorY) * 0.3;
-        network.syncState({ chapter: this.chapter, state: { termCursorX: tx, termCursorY: ty } });
-        this.state.termCursorX = tx;
-        this.state.termCursorY = ty;
-      }
+    if (this.chapter === 2 && this.role === 'terminal') {
+      this.state.termX = cx;
+      this.state.termY = cy;
+      this.sync();
+    }
+    if (this.chapter === 3 && this.role === 'terminal') {
+      this.state.termCursorX = cx;
+      this.state.termCursorY = cy;
+      this.state.termLoaded = true;
+      this.sync();
     }
   }
 
