@@ -139,6 +139,10 @@ export class ChapterScene {
     this.narrativeAlpha = 0;
     this.completed = false;
     this.cyberDeco = [];
+    this.ml5Setup = false;
+    this.handpose = null;
+    this.videoElement = null;
+    this.cameraStream = null;
 
     network.on(Events.SYNC_STATE, this.onSyncState.bind(this));
     network.on(Events.CHAPTER_COMPLETE, this.onChapterComplete.bind(this));
@@ -185,6 +189,7 @@ export class ChapterScene {
     this.videoElement = video;
 
     navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      this.cameraStream = stream;
       video.srcObject = stream;
       video.play();
       if (window.ml5) {
@@ -887,14 +892,17 @@ export class ChapterScene {
 
   destroy() {
     network.offAll();
-    if (this.handpose) {
-      this.handpose = null;
+    this.handpose = null;
+    if (this.cameraStream) {
+      this.cameraStream.getTracks().forEach(track => track.stop());
+      this.cameraStream = null;
     }
     if (this.videoElement) {
       this.videoElement.pause();
-      this.videoElement.srcObject?.getTracks().forEach(track => track.stop());
+      this.videoElement.srcObject = null;
       this.videoElement.remove();
       this.videoElement = null;
     }
+    this.ml5Setup = false;
   }
 }
